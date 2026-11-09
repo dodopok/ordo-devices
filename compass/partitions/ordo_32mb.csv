@@ -1,0 +1,9 @@
+# Name,   Type, SubType, Offset,   Size,     Flags
+# 32 MB flash: two 8 MB app slots for OTA, a 32 KB NVS for settings and the
+# device token, and the rest as a LittleFS volume for cached payloads.
+nvs,      data, nvs,     0x9000,   0x8000,
+otadata,  data, ota,     0x11000,  0x2000,
+phy_init, data, phy,     0x13000,  0x1000,
+app0,     app,  ota_0,   0x20000,  0x800000,
+app1,     app,  ota_1,   0x820000, 0x800000,
+littlefs, data, spiffs,  0x1020000,0xFE0000,

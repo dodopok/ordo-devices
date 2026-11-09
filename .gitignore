@@ -1,0 +1,13 @@
+# PlatformIO
+.pio/
+.vscode/
+*.pyc
+__pycache__/
+
+# Secrets a developer may keep beside the project; never committed
+*.local.ini
+compass/include/secrets.h
+
+# Editor and OS noise
+.DS_Store
+*.swp

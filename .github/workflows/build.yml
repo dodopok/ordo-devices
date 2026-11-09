@@ -1,0 +1,49 @@
+name: Build firmware
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  compass:
+    name: compass (${{ matrix.env }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [amoled175c, amoled175]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            compass/.pio
+          key: pio-${{ runner.os }}-${{ matrix.env }}-${{ hashFiles('compass/platformio.ini') }}
+
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio
+
+      - name: Build
+        working-directory: compass
+        run: pio run -e ${{ matrix.env }}
+
+      - name: Report size
+        working-directory: compass
+        run: pio run -e ${{ matrix.env }} -t size | tail -20
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: compass-${{ matrix.env }}
+          path: |
+            compass/.pio/build/${{ matrix.env }}/firmware.bin
+            compass/.pio/build/${{ matrix.env }}/bootloader.bin
+            compass/.pio/build/${{ matrix.env }}/partitions.bin
+          if-no-files-found: error
