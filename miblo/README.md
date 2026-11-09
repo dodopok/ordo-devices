@@ -8,11 +8,11 @@ na tela do aparelho.
 O app mostra o dia litúrgico da conta do Ordo de quem o instalou: o anel do
 ano litúrgico com a cor de cada tempo e as festas como pontos, a data, o nome
 do dia (a festa ou o santo quando há), o tempo na sua cor e os quatro ofícios
-(Manhã, Meio-dia, Tarde, Completas) marcados conforme a pessoa reza no app;
+(Manhã, Meio-dia, Tarde, Completas) marcados conforme a pessoa ora no app;
 quando os quatro estão feitos, o anel fica dourado. Com a opção ligada, a
 tela alterna com as leituras do dia. Lembretes opcionais da Oração da Manhã e
 da Tarde avisam no Miblo, no horário escolhido, se o ofício ainda não foi
-rezado.
+orado.
 
 Como todo aparelho do Ordo, o app **só lê**. Concluir um ofício continua no
 app; a tela reflete isso em até cinco minutos. Precisa de **Ordo+**.

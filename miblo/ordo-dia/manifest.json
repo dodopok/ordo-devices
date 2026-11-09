@@ -10,7 +10,7 @@
   },
   "category": "daily",
   "promise": {
-    "pt": "O dia litúrgico na mesa: cor do tempo, festa, leituras e os ofícios que você já rezou hoje.",
+    "pt": "O dia litúrgico na mesa: cor do tempo, festa, leituras e os ofícios que você já orou hoje.",
     "en": "The liturgical day on your desk: season colour, feast, readings and the offices you prayed today."
   },
   "settings": [
@@ -89,7 +89,7 @@
       },
       {
         "t": "text",
-        "value": "Manha rezada, faltam 3",
+        "value": "Manha orada, faltam 3",
         "color": "green"
       }
     ]

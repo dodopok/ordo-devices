@@ -35,7 +35,7 @@ const OFFICES = ['morning', 'midday', 'evening', 'compline'];
 const T = {
   pt: {
     title: 'Oração da Manhã', titleEvening: 'Oração da Tarde',
-    remind: (streak) => (streak > 1 ? `Ainda não rezada hoje. ${streak} dias seguidos: não deixe passar.` : 'Ainda não rezada hoje. Abra o Ordo quando puder.'),
+    remind: (streak) => (streak > 1 ? `Ainda não orada hoje. ${streak} dias seguidos: não deixe passar.` : 'Ainda não orada hoje. Abra o Ordo quando puder.'),
     noApi: 'Sem resposta da API', noApiHint: 'tentando de novo em instantes',
     denied: 'Não foi possível vincular', deniedHint: 'confira no app se a conta tem Ordo+ e menos de 5 aparelhos',
     noStore: 'o vínculo será pedido de novo quando o Hub reiniciar',
