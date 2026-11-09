@@ -45,6 +45,10 @@ struct RtcState {
   // The screens.
   uint16_t beads;
 
+  // Firmware updates: when the site was last asked, and what it offered.
+  int64_t updateCheckedRaw;  // raw seconds; 0: never since power-on
+  char updateVersion[16];    // "0.4.1"; empty: nothing newer was on offer
+
   // For the "Sobre" screen.
   int32_t countersDay;
   uint32_t wakesToday;

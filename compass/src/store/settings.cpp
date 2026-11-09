@@ -118,6 +118,7 @@ ui::Prefs Settings::prefs() {
   p.syncHours = nvs.getUChar("sync", p.syncHours);
   p.beadsMode = nvs.getUChar("beads", p.beadsMode);
   p.animations = nvs.getBool("anim", p.animations);
+  p.remindersFromApp = nvs.getBool("remapp", p.remindersFromApp);
   if (p.homeFace > 4) p.homeFace = 0;
   if (p.brightness > 2) p.brightness = 1;
   if (p.volume > 2) p.volume = 1;
@@ -145,6 +146,7 @@ void Settings::savePrefs(const ui::Prefs& p) {
   if (s.getUChar("sync", 255) != p.syncHours) s.putUChar("sync", p.syncHours);
   if (s.getUChar("beads", 255) != p.beadsMode) s.putUChar("beads", p.beadsMode);
   if (!s.isKey("anim") || s.getBool("anim") != p.animations) s.putBool("anim", p.animations);
+  if (!s.isKey("remapp") || s.getBool("remapp") != p.remindersFromApp) s.putBool("remapp", p.remindersFromApp);
 }
 
 void Settings::addNetwork(const String& ssid, const String& pass) {

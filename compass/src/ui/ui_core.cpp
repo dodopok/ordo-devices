@@ -8,7 +8,6 @@ namespace ui::detail {
 State S;
 
 namespace {
-constexpr int kPageCount = 6;
 int indexOf(Page page) { return static_cast<int>(page); }
 }  // namespace
 
@@ -329,16 +328,47 @@ void statusMarkers(lv_obj_t* scr, int32_t y) {
   }
 }
 
+bool pageAvailable(Page page) {
+  // The celebration's page exists on the days that have one.
+  return page != Page::Celebration || S.day.day.celebration.present();
+}
+
 void pageDots(lv_obj_t* scr, Page page) {
-  // Where you are in the carousel: six points on the rim, at three o'clock,
-  // outside every ring the faces draw.
-  const int count = kPageCount;
+  // Where you are in the carousel: a point per page there is today, on the
+  // rim at three o'clock, outside every ring the faces draw.
+  int count = 0;
+  int here = 0;
+  for (int i = 0; i < kPageCount; i++) {
+    if (!pageAvailable(static_cast<Page>(i))) continue;
+    if (i == indexOf(page)) here = count;
+    count++;
+  }
   for (int i = 0; i < count; i++) {
-    const bool here = i == indexOf(page);
-    lv_obj_t* d = dot(scr, here ? 9 : 5, here ? theme::fg() : theme::faint(), theme::bg(), 0);
+    lv_obj_t* d = dot(scr, i == here ? 9 : 5, i == here ? theme::fg() : theme::faint(), theme::bg(), 0);
     const float span = 0.016f;
     placePolar(d, 227.0f, 0.25f + (i - (count - 1) / 2.0f) * span);
   }
+}
+
+lv_obj_t* scrollColumn(lv_obj_t* scr) {
+  lv_obj_t* col = lv_obj_create(scr);
+  lv_obj_remove_style_all(col);
+  lv_obj_set_size(col, kScreen, kScreen);
+  lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(col, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_top(col, 34, 0);
+  lv_obj_set_style_pad_bottom(col, 170, 0);
+  lv_obj_set_style_pad_row(col, 8, 0);
+  lv_obj_set_scroll_dir(col, LV_DIR_VER);
+  lv_obj_set_scrollbar_mode(col, LV_SCROLLBAR_MODE_OFF);
+  lv_obj_set_scrollable(col, true);
+  return col;
+}
+
+int16_t reminderFor(int office) {
+  if (office < 0 || office > 3) return -1;
+  if (S.prefs.remindersFromApp && S.day.hasReminders) return S.day.reminders[office];
+  return S.prefs.reminder[office];
 }
 
 void load(lv_obj_t* scr) {
@@ -463,12 +493,15 @@ void buildPage(Page page) {
   clear(scr);
   switch (page) {
     case Page::Now: buildNow(scr); break;
+    case Page::Celebration: buildCelebration(scr); break;
     case Page::Compass: buildCompass(scr); break;
     case Page::Readings: buildReadings(scr); break;
     case Page::Offices: buildOffices(scr); break;
     case Page::Week: buildWeek(scr); break;
     case Page::Menu: buildMenu(scr); break;
   }
+  // Drawn last, so they sit above whatever the page drew: the picture of a
+  // celebration included.
   statusMarkers(scr, page == Page::Compass || page == Page::Offices ? 82 : 40);
   pageDots(scr, page);
   S.dirty[i] = false;
@@ -575,6 +608,10 @@ Page homePage() {
 }
 
 void showPage(Page page) {
+  // A page with nothing to show today gives way to the first one.
+  if (!pageAvailable(page)) page = Page::Now;
+  // Leaving the celebration closes it: next time it opens on the picture.
+  if (page != Page::Celebration) S.celebrationOpen = false;
   // What is on show is settled at once, so a second swipe during the dip
   // starts from the page being opened; the glass follows a moment later.
   S.mode = Mode::Pages;
@@ -606,6 +643,9 @@ void goBack() {
       break;
     case Mode::SettingsSub:
       openSettings();
+      break;
+    case Mode::Reading:
+      showPage(Page::Celebration);
       break;
     case Mode::Notice:
       if (S.noticeOverDay) dismissNotice();
@@ -642,9 +682,18 @@ void setToday(const model::Today& today) {
   for (bool& d : S.dirty) d = true;
   if (first && (S.mode == Mode::Notice && !S.noticeOverDay)) {
     goHome();
+  } else if (S.mode == Mode::Pages && !pageAvailable(S.page)) {
+    // The day turned under the celebration's page and the new one has none.
+    showPage(Page::Now);
   } else if (S.mode == Mode::Pages) {
     rebuildVisible();
   }
+}
+
+void contentArrived(const String& slug) {
+  if (slug != S.day.day.celebration.slug) return;
+  S.dirty[static_cast<int>(Page::Celebration)] = true;
+  celebrationContentArrived();
 }
 
 void setStatus(const Status& status) {
@@ -677,11 +726,18 @@ bool onSwipe(Swipe dir) {
   const bool forward = dir == Swipe::Up || dir == Swipe::Left;
   switch (S.mode) {
     case Mode::Pages: {
-      const int count = 6;
-      const int next = (static_cast<int>(S.page) + (forward ? 1 : count - 1)) % count;
+      int next = static_cast<int>(S.page);
+      do {
+        next = (next + (forward ? 1 : kPageCount - 1)) % kPageCount;
+      } while (!pageAvailable(static_cast<Page>(next)));
       showPage(static_cast<Page>(next));
       return true;
     }
+    case Mode::Reading:
+      // The text scrolls up and down; a swipe to the right closes it.
+      if (dir != Swipe::Right) return false;
+      goBack();
+      return true;
     case Mode::Settings:
       // The list scrolls up and down; only a sideways swipe leaves it.
       if (dir != Swipe::Right) return false;
@@ -742,6 +798,10 @@ PowerHint powerHint() {
     case Mode::Settings:
     case Mode::SettingsSub:
       hint.screenSeconds = 45;
+      break;
+    case Mode::Reading:
+      // Someone is reading: the screen waits for them.
+      hint.screenSeconds = 90;
       break;
     case Mode::Notice:
       if (S.noticeOverDay) hint.screenSeconds = S.noticeSeconds;

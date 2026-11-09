@@ -19,6 +19,7 @@ enum class Row : uintptr_t {
   Sound,
   Volume,
   HourBell,
+  ReminderSource,
   Reminder0,
   Reminder1,
   Reminder2,
@@ -26,6 +27,7 @@ enum class Row : uintptr_t {
   Wifi,
   SyncEvery,
   SyncNow,
+  Update,
   About,
   PowerOff,
   Unlink,
@@ -56,6 +58,8 @@ std::vector<Shown> shown;
 
 void openTimeEditor(int office);
 void openWifi();
+void buildUpdate(lv_obj_t* scr);
+bool followingApp();
 void openAbout();
 void openConfirm(Confirm what, int index = 0);
 void onRow(lv_event_t* e);
@@ -122,15 +126,28 @@ bool valueOf(Row id, String& value, lv_color_t& color) {
     case Row::Sound: value = yesNo(p.sound); break;
     case Row::Volume: value = level(p.volume); return true;
     case Row::HourBell: value = yesNo(p.hourBell); break;
+    case Row::ReminderSource:
+      value = p.remindersFromApp ? tr("Do app", "From the app", "De la app") : tr("Daqui", "From here", "De aquí");
+      // Asked to follow the app, but the app has none set: the ones here ring.
+      if (p.remindersFromApp && !S.day.hasReminders) color = theme::faint();
+      return true;
     case Row::Reminder0:
     case Row::Reminder1:
     case Row::Reminder2:
     case Row::Reminder3: {
-      const int16_t at = p.reminder[static_cast<int>(id) - static_cast<int>(Row::Reminder0)];
+      const int16_t at = reminderFor(static_cast<int>(id) - static_cast<int>(Row::Reminder0));
       value = at >= 0 ? clockText(at) : String(tr("Desligado", "Off", "Apagado"));
-      if (at < 0) color = theme::faint();
+      // The app's times are shown, not edited, here.
+      if (at < 0 || followingApp()) color = theme::faint();
       return true;
     }
+    case Row::Update:
+      switch (S.status.update) {
+        case UpdateState::Available: value = String("v") + S.status.updateVersion; break;
+        case UpdateState::Checking: value = "…"; color = theme::faint(); break;
+        default: value = "›"; color = theme::faint(); break;
+      }
+      return true;
     case Row::SyncEvery: value = syncText(p.syncHours); return true;
     case Row::SyncNow:
       value = syncedText();
@@ -143,22 +160,10 @@ bool valueOf(Row id, String& value, lv_color_t& color) {
   return true;
 }
 
-// A column that scrolls under the round glass: padded so the first and the
-// last rows can be brought to the middle, where the screen is widest.
-lv_obj_t* column(lv_obj_t* scr) {
-  lv_obj_t* col = lv_obj_create(scr);
-  lv_obj_remove_style_all(col);
-  lv_obj_set_size(col, kScreen, kScreen);
-  lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(col, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_top(col, 34, 0);
-  lv_obj_set_style_pad_bottom(col, 170, 0);
-  lv_obj_set_style_pad_row(col, 8, 0);
-  lv_obj_set_scroll_dir(col, LV_DIR_VER);
-  lv_obj_set_scrollbar_mode(col, LV_SCROLLBAR_MODE_OFF);
-  lv_obj_set_scrollable(col, true);
-  return col;
-}
+lv_obj_t* column(lv_obj_t* scr) { return scrollColumn(scr); }
+
+// The reminders follow the app when the owner lets them and the app has any.
+bool followingApp() { return S.prefs.remindersFromApp && S.day.hasReminders; }
 
 void caption(lv_obj_t* col, const char* label) {
   lv_obj_t* l = lv_label_create(col);
@@ -272,13 +277,17 @@ void onRow(lv_event_t* e) {
       if (p.sound && S.actions.bell) S.actions.bell(1);
       break;
     case Row::HourBell: p.hourBell = !p.hourBell; break;
+    case Row::ReminderSource: p.remindersFromApp = !p.remindersFromApp; break;
     case Row::Reminder0:
     case Row::Reminder1:
     case Row::Reminder2:
     case Row::Reminder3:
+      // Following the app, the times are the app's to change.
+      if (followingApp()) return;
       rememberScroll();
       openTimeEditor(static_cast<int>(id) - static_cast<int>(Row::Reminder0));
       return;
+    case Row::Update: rememberScroll(); openUpdate(); return;
     case Row::Wifi: rememberScroll(); openWifi(); return;
     case Row::SyncEvery:
       p.syncHours = p.syncHours == 0 ? 2 : (p.syncHours == 2 ? 4 : (p.syncHours == 4 ? 6 : (p.syncHours == 6 ? 12 : 0)));
@@ -325,6 +334,7 @@ void buildList() {
   row(list, Row::HourBell, tr("Sino às 6h, 12h e 18h", "Bell at 6, 12 and 18", "Campana 6h, 12h y 18h"));
 
   caption(list, tr("LEMBRETES", "REMINDERS", "RECORDATORIOS"));
+  row(list, Row::ReminderSource, tr("Horários", "Times", "Horarios"));
   for (int i = 0; i < 4; i++) row(list, static_cast<Row>(static_cast<int>(Row::Reminder0) + i), officeName(i));
 
   caption(list, tr("REDE", "NETWORK", "RED"));
@@ -333,6 +343,7 @@ void buildList() {
   row(list, Row::SyncNow, tr("Sincronizar agora", "Sync now", "Sincronizar ahora"));
 
   caption(list, tr("APARELHO", "DEVICE", "DISPOSITIVO"));
+  row(list, Row::Update, tr("Atualização", "Update", "Actualización"));
   row(list, Row::About, tr("Sobre", "About", "Acerca de"), "›", theme::faint());
   row(list, Row::PowerOff, tr("Desligar", "Power off", "Apagar"), "›", theme::faint());
   if (S.status.linked) {
@@ -606,6 +617,72 @@ void openConfirm(Confirm what, int index) {
   openSub(buildConfirm);
 }
 
+// The firmware: what is installed, what is on offer, and the two things to
+// do about it. Built again whenever the search changes state.
+void buildUpdate(lv_obj_t* scr) {
+  backChip(scr);
+  const Diagnostics info = S.actions.diagnostics ? S.actions.diagnostics() : Diagnostics();
+  const Status& st = S.status;
+  text(scr, tr("ATUALIZAÇÃO", "UPDATE", "ACTUALIZACIÓN"), theme::tiny(), theme::dim(), 82, 3, 260);
+  char installed[48];
+  snprintf(installed, sizeof(installed), "v%s", info.firmware.c_str());
+
+  if (st.update == UpdateState::Available) {
+    char offer[48];
+    snprintf(offer, sizeof(offer), "v%s", st.updateVersion.c_str());
+    text(scr, offer, theme::display(), theme::gold(), 110, 0, 300);
+    char from[72];
+    snprintf(from, sizeof(from), tr("instalada: %s", "installed: %s", "instalada: %s"), installed);
+    text(scr, from, theme::small(), theme::dim(), 168, 0, 280);
+    if (!st.updateNotes.isEmpty()) {
+      lv_obj_t* notes = text(scr, st.updateNotes.c_str(), theme::small(), theme::fg(), 198, 0, 300);
+      lv_label_set_long_mode(notes, LV_LABEL_LONG_MODE_DOTS);
+      lv_obj_set_height(notes, 88);
+    }
+    // Writing a firmware on a battery that may give out half way is how a
+    // device ends up needing a cable.
+    const bool enough = st.onUsb || st.batteryPercent < 0 || st.batteryPercent >= 40;
+    if (enough) {
+      lv_obj_t* go = pill(
+          scr, tr("Instalar", "Install", "Instalar"), true,
+          [](lv_event_t*) {
+            if (S.actions.installUpdate) S.actions.installUpdate();
+          },
+          nullptr);
+      lv_obj_align(go, LV_ALIGN_TOP_MID, 0, 300);
+      text(scr, tr("leva um minuto; mantenha perto do Wi-Fi", "takes a minute; keep it near the Wi-Fi",
+                   "tarda un minuto; manténgala cerca del Wi-Fi"),
+           theme::tiny(), theme::faint(), 362, 0, 250);
+    } else {
+      text(scr, tr("Ligue no cabo para instalar: a bateria está abaixo de 40%.", "Plug it in to install: the battery is under 40%.",
+                   "Conéctela para instalar: la batería está por debajo del 40%."),
+           theme::small(), theme::red(), 304, 0, 270);
+    }
+    return;
+  }
+
+  text(scr, installed, theme::display(), theme::fg(), 124, 0, 300);
+  const char* state = "";
+  lv_color_t color = theme::dim();
+  switch (st.update) {
+    case UpdateState::Checking: state = tr("procurando…", "looking…", "buscando…"); break;
+    case UpdateState::UpToDate: state = tr("é a versão mais recente", "this is the latest version", "es la versión más reciente"); color = theme::green(); break;
+    case UpdateState::Failed: state = tr("não deu para procurar agora", "could not look right now", "no se pudo buscar ahora"); color = theme::red(); break;
+    default: state = tr("procura sozinha uma vez por dia, na tomada", "it looks by itself once a day, when plugged in",
+                        "busca sola una vez al día, enchufada"); break;
+  }
+  text(scr, state, theme::small(), color, 196, 0, 270);
+  if (st.update != UpdateState::Checking) {
+    lv_obj_t* look = pill(
+        scr, tr("Procurar agora", "Look now", "Buscar ahora"), false,
+        [](lv_event_t*) {
+          if (S.actions.checkUpdate) S.actions.checkUpdate();
+        },
+        nullptr);
+    lv_obj_align(look, LV_ALIGN_TOP_MID, 0, 272);
+  }
+}
+
 }  // namespace
 
 void openSettings() {
@@ -621,7 +698,21 @@ void openSettings() {
 
 // Brings the values on screen up to date: after a tap, or when the status
 // changes under the list (a sync starting or ending).
+void openUpdate() { openSub(buildUpdate); }
+
 void refreshSettings() {
+  // The update screen follows the search as it goes.
+  if (S.mode == Mode::SettingsSub && subBuilder == buildUpdate && lv_screen_active() == S.sub) {
+    static UpdateState shownState = UpdateState::Unknown;
+    static String shownVersion;
+    if (shownState != S.status.update || shownVersion != S.status.updateVersion) {
+      shownState = S.status.update;
+      shownVersion = S.status.updateVersion;
+      clear(S.sub);
+      buildUpdate(S.sub);
+    }
+    return;
+  }
   if (S.mode != Mode::Settings || lv_screen_active() != S.settings) return;
   for (const Shown& item : shown) {
     String value;

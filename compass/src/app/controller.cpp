@@ -3,8 +3,11 @@
 #include <Wire.h>
 #include <esp_system.h>
 
+#include <esp_heap_caps.h>
+
 #include "../app_config.h"
 #include "../board/audio.h"
+#include "../content/art.h"
 #include "../board/display.h"
 #include "../board/touch.h"
 #include "../sys/clock.h"
@@ -77,6 +80,16 @@ void Controller::begin() {
   if (wake_ == board::Wake::Timer && !background()) goToSleep();
 
   startScreen();
+  // After an update this is the new firmware's first boot: it got as far as
+  // its screen, so the bootloader may stop keeping the old one in reserve.
+  net::otaConfirmRunning();
+  // What the site offered at an earlier wake is still on offer.
+  if (model::versionNewer(r.updateVersion, ORDO_FIRMWARE_VERSION)) {
+    update_ = ui::UpdateState::Available;
+    offer_.version = String(r.updateVersion);
+  } else {
+    r.updateVersion[0] = '\0';
+  }
   showInitial();
 }
 
@@ -179,6 +192,8 @@ void Controller::showInitial() {
 void Controller::loop() {
   net::wifiLoop();
   lv_timer_handler();
+  // A firmware being written is the only thing going on.
+  if (stepInstall()) return;
   handleInput();
   if (later_) {
     const std::function<void()> job = later_;
@@ -378,6 +393,19 @@ void Controller::stepSync() {
     fetch_.result = net::TodayResult();
     // Unlinked while it was in the air: the answer is nobody's.
     if (linked()) applyToday(result);
+    // The radio is still up: fetch what the day's celebrations lack.
+    if (syncing_ && linked() && flow_ == Flow::Day && net::wifiConnected() && startContent()) return;
+    if (syncing_) finishSync();
+    return;
+  }
+  if (content_.running) {
+    drainContent();
+    if (!content_.done) return;
+    drainContent();
+    content_.running = false;
+    content_.jobs.clear();
+    content_.results.clear();
+    pruneContent();
     if (syncing_) finishSync();
     return;
   }
@@ -421,10 +449,354 @@ bool Controller::syncBlocking() {
     delay(15);
   }
   const bool connected = net::wifiConnected();
-  if (connected) fetchToday();
-  else syncFailed();
+  if (connected) {
+    fetchToday();
+    // So that the morning's wake finds the day's picture already there.
+    if (linked() && today_.valid) fetchContentBlocking();
+  } else {
+    syncFailed();
+  }
   net::wifiOff();
   return connected;
+}
+
+// ===================================================== pictures and texts
+
+// What today and the days ahead still lack, today first. Art before text:
+// a celebration without its text still has a name, one without its picture
+// has an empty page.
+std::vector<Controller::ContentJob> Controller::wantedContent(int limit) {
+  std::vector<ContentJob> jobs;
+  if (!today_.valid) return jobs;
+  const model::Today view = currentView();
+  auto absent = [this](const String& slug, store::ContentKind kind) {
+    const String key = slug + (kind == store::ContentKind::Art ? ".jpg" : ".json");
+    for (const String& gone : missing_) {
+      if (gone == key) return false;
+    }
+    return !store::contentHas(slug, kind);
+  };
+  auto consider = [&](const model::DayInfo& day) {
+    const model::Celebration& c = day.celebration;
+    if (c.slug.isEmpty()) return;
+    if (static_cast<int>(jobs.size()) < limit && !c.artPath.isEmpty() && absent(c.slug, store::ContentKind::Art)) {
+      ContentJob job;
+      job.slug = c.slug;
+      job.path = c.artPath;
+      job.kind = store::ContentKind::Art;
+      jobs.push_back(job);
+    }
+    if (static_cast<int>(jobs.size()) < limit && !c.textPath.isEmpty() && absent(c.slug, store::ContentKind::Text)) {
+      ContentJob job;
+      job.slug = c.slug;
+      job.path = c.textPath;
+      job.kind = store::ContentKind::Text;
+      jobs.push_back(job);
+    }
+  };
+  consider(view.day);
+  for (const model::DayInfo& day : view.upcoming) consider(day);
+  return jobs;
+}
+
+bool Controller::startContent() {
+  content_.jobs = wantedContent(battery_.onUsb ? cfg::kContentPerSyncMains : cfg::kContentPerSyncBattery);
+  // The same connection asks, once a day, whether there is a newer firmware.
+  if (updateCheckDue()) {
+    ContentJob job;
+    job.manifest = true;
+    content_.jobs.push_back(job);
+  }
+  if (content_.jobs.empty()) return false;
+  content_.results.clear();
+  content_.results.resize(content_.jobs.size());
+  content_.produced = 0;
+  content_.consumed = 0;
+  content_.done = false;
+  if (xTaskCreatePinnedToCore(contentTask, "ordo-content", 16384, this, 1, nullptr, 0) != pdPASS) {
+    content_.jobs.clear();
+    content_.results.clear();
+    return false;
+  }
+  content_.running = true;
+  return true;
+}
+
+// Runs beside the main loop. It touches the network and its own slot of
+// `results`, nothing else; the main loop takes it from there.
+void Controller::contentTask(void* self) {
+  Controller* c = static_cast<Controller*>(self);
+  {
+    net::Site site;
+    for (size_t i = 0; i < c->content_.jobs.size(); i++) {
+      const ContentJob& job = c->content_.jobs[i];
+      ContentResult& result = c->content_.results[i];
+      if (job.manifest) {
+        result.status = site.get("/firmware/manifest.json", result.body, cfg::kManifestMaxBytes);
+      } else {
+        result.status = site.get(job.path, result.body, job.kind == store::ContentKind::Art ? cfg::kArtMaxBytes : cfg::kTextMaxBytes);
+      }
+      c->content_.produced = static_cast<int>(i) + 1;
+      // The site did not answer at all: the rest would go the same way.
+      if (result.status < 0 && result.status != net::kSiteBodyRefused) break;
+    }
+    site.close();
+  }
+  c->content_.done = true;
+  vTaskDelete(nullptr);
+}
+
+void Controller::drainContent() {
+  while (content_.consumed < content_.produced.load()) {
+    const size_t i = static_cast<size_t>(content_.consumed++);
+    keepContent(content_.jobs[i], content_.results[i]);
+    content_.results[i].body = std::vector<uint8_t>();
+  }
+}
+
+void Controller::keepContent(const ContentJob& job, ContentResult& result) {
+  if (job.manifest) {
+    model::FirmwareOffer offer;
+    net::OtaCheck check = net::OtaCheck::Failed;
+    if (result.status == 200 && model::parseManifest(reinterpret_cast<const char*>(result.body.data()), result.body.size(), ORDO_BOARD_KEY,
+                                                     today_.language, offer)) {
+      const bool newer = model::versionNewer(offer.version.c_str(), ORDO_FIRMWARE_VERSION) &&
+                         !(net::otaRequiresSignature() && offer.signature.isEmpty());
+      check = newer ? net::OtaCheck::Available : net::OtaCheck::UpToDate;
+    }
+    rememberOffer(check, offer);
+    return;
+  }
+  const bool art = job.kind == store::ContentKind::Art;
+  if (result.status == 200 && result.body.size() > 16) {
+    // A JPEG begins FF D8; the text is a JSON object.
+    const bool looksRight = art ? (result.body[0] == 0xFF && result.body[1] == 0xD8) : result.body[0] == '{';
+    if (looksRight && store::contentWrite(job.slug, job.kind, result.body.data(), result.body.size())) {
+      if (art && artSlug_ == job.slug) artSlug_ = String();
+      if (screenUp_) ui::contentArrived(job.slug);
+    }
+  } else if (result.status == 404) {
+    // No picture in the CMS, or one too small to show: the page is set in
+    // type, and the site is not asked again until the next wake.
+    missing_.push_back(job.slug + (art ? ".jpg" : ".json"));
+  }
+}
+
+// The same, without a task: for a wake nobody is watching.
+void Controller::fetchContentBlocking() {
+  const std::vector<ContentJob> jobs = wantedContent(cfg::kContentPerSyncBattery);
+  if (!jobs.empty()) {
+    net::Site site;
+    for (const ContentJob& job : jobs) {
+      ContentResult result;
+      result.status = site.get(job.path, result.body, job.kind == store::ContentKind::Art ? cfg::kArtMaxBytes : cfg::kTextMaxBytes);
+      if (result.status < 0 && result.status != net::kSiteBodyRefused) break;
+      keepContent(job, result);
+    }
+    site.close();
+  }
+  pruneContent();
+}
+
+// The days that went by take their pictures with them.
+void Controller::pruneContent() {
+  if (!today_.valid) return;
+  std::vector<String> keep;
+  if (!today_.day.celebration.slug.isEmpty()) keep.push_back(today_.day.celebration.slug);
+  for (const model::DayInfo& day : today_.upcoming) {
+    if (!day.celebration.slug.isEmpty()) keep.push_back(day.celebration.slug);
+  }
+  store::contentPrune(keep);
+}
+
+ui::Art Controller::artFor(const String& slug) {
+  ui::Art art;
+  if (slug.isEmpty()) return art;
+  if (artSlug_ != slug || !artPixels_) {
+    size_t length = 0;
+    uint8_t* jpeg = store::contentRead(slug, store::ContentKind::Art, length);
+    if (!jpeg) return art;
+    if (!artPixels_) {
+      artPixels_ = static_cast<uint16_t*>(
+          heap_caps_malloc(static_cast<size_t>(content::kArtSide) * content::kArtSide * sizeof(uint16_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    }
+    const bool decoded = artPixels_ && content::decodeArt(jpeg, length, artPixels_);
+    free(jpeg);
+    if (!decoded) {
+      // A file that does not decode is of no use: fetched again next sync.
+      if (artPixels_) store::contentRemove(slug, store::ContentKind::Art);
+      artSlug_ = String();
+      return art;
+    }
+    artSlug_ = slug;
+  }
+  art.pixels = reinterpret_cast<const uint8_t*>(artPixels_);
+  art.side = content::kArtSide;
+  return art;
+}
+
+model::CelebrationText Controller::textFor(const String& slug) {
+  model::CelebrationText text;
+  size_t length = 0;
+  uint8_t* json = store::contentRead(slug, store::ContentKind::Text, length);
+  if (!json) return text;
+  if (!model::parseCelebrationText(reinterpret_cast<const char*>(json), length, text)) {
+    store::contentRemove(slug, store::ContentKind::Text);
+  }
+  free(json);
+  return text;
+}
+
+// ======================================================= firmware updates
+
+bool Controller::updateCheckDue() const {
+  const sys::RtcState& r = sys::rtc();
+  return r.updateCheckedRaw == 0 || sys::rawSeconds() - r.updateCheckedRaw >= cfg::kUpdateCheckEverySeconds;
+}
+
+void Controller::rememberOffer(net::OtaCheck result, const model::FirmwareOffer& offer) {
+  sys::RtcState& r = sys::rtc();
+  switch (result) {
+    case net::OtaCheck::Available:
+      update_ = ui::UpdateState::Available;
+      offer_ = offer;
+      strlcpy(r.updateVersion, offer.version.c_str(), sizeof(r.updateVersion));
+      r.updateCheckedRaw = sys::rawSeconds();
+      break;
+    case net::OtaCheck::UpToDate:
+      update_ = ui::UpdateState::UpToDate;
+      offer_ = model::FirmwareOffer();
+      r.updateVersion[0] = '\0';
+      r.updateCheckedRaw = sys::rawSeconds();
+      break;
+    case net::OtaCheck::Failed:
+      // What was known before stands; only someone who asked is told.
+      if (update_ == ui::UpdateState::Checking) update_ = ui::UpdateState::Failed;
+      break;
+  }
+  if (screenUp_) pushStatus();
+}
+
+// Brings the Wi-Fi up for something the owner asked for and is waiting on,
+// keeping the screen alive meanwhile.
+bool Controller::connectForSite() {
+  setCpuFrequencyMhz(cfg::kCpuRadioMhz);
+  if (!net::wifiConnected()) net::wifiConnect();
+  const uint32_t start = millis();
+  while (!net::wifiConnected() && net::wifiState() == net::WifiState::Connecting && millis() - start < 20000) {
+    net::wifiLoop();
+    lv_timer_handler();
+    delay(10);
+  }
+  return net::wifiConnected();
+}
+
+void Controller::checkUpdateNow() {
+  // One conversation with the network at a time: wait for a sync to end.
+  if (fetch_.running || content_.running) {
+    later_ = [this]() { checkUpdateNow(); };
+    return;
+  }
+  update_ = ui::UpdateState::Checking;
+  pushStatus();
+  settleScreen();
+  lv_display_trigger_activity(nullptr);
+  model::FirmwareOffer offer;
+  net::OtaCheck result = net::OtaCheck::Failed;
+  if (connectForSite()) {
+    net::Site site;
+    result = net::otaCheck(site, today_.language, offer);
+    site.close();
+  }
+  rememberOffer(result, offer);
+  if (!syncing_ && !deskMode() && flow_ == Flow::Day) {
+    net::wifiOff();
+    setCpuFrequencyMhz(cfg::kCpuScreenMhz);
+  }
+  lv_display_trigger_activity(nullptr);
+  pushStatus();
+}
+
+void Controller::installUpdateNow() {
+  if (fetch_.running || content_.running) {
+    later_ = [this]() { installUpdateNow(); };
+    return;
+  }
+  // A battery that gives out half way leaves the old firmware in place, but
+  // there is no reason to try.
+  const bool enough = battery_.onUsb || !battery_.present || battery_.percent < 0 || battery_.percent >= cfg::kUpdateMinBatteryPercent;
+  if (install_.running || !enough || update_ != ui::UpdateState::Available) return;
+
+  install_.version = offer_.version;
+  install_.language = today_.language;
+  install_.percent = 0;
+  install_.shown = -1;
+  install_.done = false;
+  install_.result = net::OtaResult::Unreachable;
+  ui::showUpdating(install_.version, 0);
+  lv_timer_handler();
+  applyBrightness();
+
+  if (!connectForSite() || xTaskCreatePinnedToCore(installTask, "ordo-update", 24576, this, 1, nullptr, 0) != pdPASS) {
+    install_.done = true;
+  }
+  install_.running = true;
+}
+
+void Controller::installTask(void* self) {
+  Controller* c = static_cast<Controller*>(self);
+  {
+    net::Site site;
+    // The manifest again, now: the offer kept from an earlier wake has no
+    // hash, and the site may have moved on since.
+    model::FirmwareOffer offer;
+    if (net::otaCheck(site, c->install_.language, offer) == net::OtaCheck::Available) {
+      c->install_.result = net::otaInstall(site, offer, [c](int percent) { c->install_.percent = percent; });
+    } else {
+      c->install_.result = net::OtaResult::BadImage;
+    }
+    site.close();
+  }
+  c->install_.done = true;
+  vTaskDelete(nullptr);
+}
+
+// True while a firmware is being written: the loop then does nothing else.
+bool Controller::stepInstall() {
+  if (!install_.running) return false;
+  lv_display_trigger_activity(nullptr);
+  const int percent = install_.percent.load();
+  if (percent != install_.shown) {
+    install_.shown = percent;
+    ui::showUpdating(install_.version, percent);
+  }
+  applyBrightness();
+  if (!install_.done) return true;
+  install_.running = false;
+
+  if (install_.result == net::OtaResult::Installed) {
+    // The new firmware may lay this memory out differently: it starts from
+    // nothing, and gets the time back at its first sync.
+    sys::rtc().magic = 0;
+    ui::showMessage("Atualizada", "reiniciando na versão nova", true);
+    lv_timer_handler();
+    delay(1500);
+    net::wifiOff();
+    esp_restart();
+  }
+
+  const char* why = install_.result == net::OtaResult::Unreachable ? "sem rede; tente perto do Wi-Fi"
+                    : (install_.result == net::OtaResult::NoRoom ? "sem espaço para gravar" : "o arquivo não conferiu; nada foi mudado");
+  ui::showMessage("Não atualizou", why, false);
+  lv_timer_handler();
+  delay(3500);
+  if (!syncing_ && !deskMode()) {
+    net::wifiOff();
+    setCpuFrequencyMhz(cfg::kCpuScreenMhz);
+  }
+  lv_display_trigger_activity(nullptr);
+  if (today_.valid) ui::goHome();
+  return false;
 }
 
 bool Controller::startFetch() {
@@ -549,7 +921,9 @@ Moment Controller::moment() const {
 
 Plan Controller::plan() const {
   Plan p;
-  for (int i = 0; i < 4; i++) p.reminder[i] = prefs_.reminder[i];
+  // The times set in the app, when the owner follows the app and it has any.
+  const bool fromApp = prefs_.remindersFromApp && today_.valid && today_.hasReminders;
+  for (int i = 0; i < 4; i++) p.reminder[i] = fromApp ? today_.reminders[i] : prefs_.reminder[i];
   p.hourBell = prefs_.hourBell;
   p.syncHours = prefs_.syncHours;
   p.canSync = linked() && net::wifiConfigured();
@@ -751,6 +1125,9 @@ void Controller::pushStatus() {
   if (!net::wifiConfigured()) status.wifiBars = -1;
   else if (r.syncFailures > 0 || r.rssi == 0) status.wifiBars = 0;
   else status.wifiBars = r.rssi >= -62 ? 3 : (r.rssi >= -75 ? 2 : 1);
+  status.update = update_;
+  status.updateVersion = offer_.version;
+  status.updateNotes = offer_.notes;
   ui::setStatus(status);
 }
 
@@ -777,6 +1154,7 @@ void Controller::factoryReset() {
   ui::showMessage("Apagando", "conta, Wi-Fi e ajustes removidos; reiniciando", true);
   lv_timer_handler();
   settings_.factoryReset();
+  store::contentWipe();
   net::wifiForgetAll();
   sys::rtc().magic = 0;
   delay(1500);
@@ -808,8 +1186,13 @@ ui::Actions Controller::actions() {
     settings_.removeNetwork(index);
     sys::rtc().channel = 0;
   };
+  a.art = [this](const String& slug) { return artFor(slug); };
+  a.celebrationText = [this](const String& slug) { return textFor(slug); };
+  a.checkUpdate = [this]() { later_ = [this]() { checkUpdateNow(); }; };
+  a.installUpdate = [this]() { later_ = [this]() { installUpdateNow(); }; };
   a.unlink = [this]() {
     settings_.clearLink();
+    store::contentWipe();
     today_ = model::Today();
     sys::rtc().lastAnswerRaw = 0;
     sys::rtc().blocked = 0;

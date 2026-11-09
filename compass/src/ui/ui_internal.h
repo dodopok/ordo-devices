@@ -13,7 +13,9 @@ using theme::kCenter;
 using theme::kScreen;
 
 // What is on the glass right now.
-enum class Mode { Notice, Pages, Beads, Silence, Torch, Settings, SettingsSub };
+enum class Mode { Notice, Pages, Beads, Silence, Torch, Settings, SettingsSub, Reading };
+
+constexpr int kPageCount = 7;
 
 struct State {
   model::Today day;
@@ -29,8 +31,11 @@ struct State {
   bool noticeOverDay = false;
   uint32_t noticeSeconds = 0;
 
-  lv_obj_t* pages[6] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
-  bool dirty[6] = {true, true, true, true, true, true};
+  lv_obj_t* pages[kPageCount] = {};
+  bool dirty[kPageCount] = {true, true, true, true, true, true, true};
+  // On the celebration page: false shows the picture whole, true the picture
+  // above and the words below.
+  bool celebrationOpen = false;
   lv_obj_t* tool = nullptr;      // beads, silence, torch
   lv_obj_t* settings = nullptr;  // the settings list
   lv_obj_t* sub = nullptr;       // a settings sub-screen
@@ -84,6 +89,14 @@ void countUp(lv_obj_t* label, int value, uint32_t delayMs);
 // A quick blink of something that just changed under a finger.
 void pulse(lv_obj_t* obj);
 void statusMarkers(lv_obj_t* scr, int32_t y);
+// A column that scrolls under the round glass, padded so that its first and
+// last rows can be brought to the middle, where the screen is widest.
+lv_obj_t* scrollColumn(lv_obj_t* scr);
+// The time an office's reminder rings at: the app's when the owner follows
+// the app and it has any, the one set on the compass otherwise. -1: none.
+int16_t reminderFor(int office);
+// Whether a page of the carousel has anything to show today.
+bool pageAvailable(Page page);
 void pageDots(lv_obj_t* scr, Page page);
 // A small "‹ voltar" at the top of tools and settings.
 void backChip(lv_obj_t* scr);
@@ -117,6 +130,10 @@ void rebuildVisible();
 
 // ---- builders
 void buildNow(lv_obj_t* scr);       // ui_faces.cpp
+void buildCelebration(lv_obj_t* scr);  // ui_celebration.cpp
+void celebrationContentArrived();
+void openReading();
+void openUpdate();                  // ui_settings.cpp
 void buildCompass(lv_obj_t* scr);
 void buildReadings(lv_obj_t* scr);  // ui_day.cpp
 void buildOffices(lv_obj_t* scr);

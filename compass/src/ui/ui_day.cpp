@@ -126,6 +126,34 @@ void buildOffices(lv_obj_t* scr) {
     snprintf(buf, sizeof(buf), "%s %s", tr("próximo:", "next:", "siguiente:"), officeName(next));
     text(scr, buf, theme::label(), theme::dim(), 262, 0, 220);
   }
+
+  // The last seven days, today on the right: a point per day, fuller the more
+  // offices were prayed, gold on a day with all four.
+  if (t.hasWeek) {
+    const int32_t y = 306;
+    for (int i = 0; i < 7; i++) {
+      const int done = i == 6 ? t.completedToday : t.week[i];
+      const int32_t x = kCenter + (i - 3) * 22;
+      lv_obj_t* d;
+      if (done < 0) {
+        d = dot(scr, 4, theme::faint(), theme::bg(), 0);
+      } else if (done == 0) {
+        d = dot(scr, 12, theme::bg(), theme::faint(), 2);
+      } else {
+        d = dot(scr, 12, done >= 4 ? theme::gold() : theme::green(), theme::bg(), 0);
+        if (done < 4) lv_obj_set_style_bg_opa(d, static_cast<lv_opa_t>(done == 1 ? 90 : (done == 2 ? 160 : 230)), 0);
+      }
+      lv_obj_update_layout(d);
+      lv_obj_align(d, LV_ALIGN_TOP_LEFT, x - lv_obj_get_width(d) / 2, y - lv_obj_get_height(d) / 2);
+      fadeIn(d, 300 + static_cast<uint32_t>(i) * 45, 200);
+    }
+    // A hair under today, so the row reads left to right into it.
+    lv_obj_t* today = dot(scr, 4, theme::fg(), theme::bg(), 0);
+    lv_obj_set_size(today, 12, 2);
+    lv_obj_set_style_radius(today, 1, 0);
+    lv_obj_align(today, LV_ALIGN_TOP_LEFT, kCenter + 3 * 22 - 6, y + 11);
+    text(scr, tr("7 DIAS", "7 DAYS", "7 DÍAS"), theme::tiny(), theme::faint(), y + 20, 2, 160);
+  }
 }
 
 void buildWeek(lv_obj_t* scr) {

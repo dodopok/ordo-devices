@@ -12,6 +12,9 @@
 #include <sstream>
 #include <string>
 
+#include <vector>
+
+#include "content/art.h"
 #include "ui/ui.h"
 #include "ui/ui_internal.h"
 
@@ -31,6 +34,55 @@ void flush(lv_display_t* d, const lv_area_t* area, uint8_t* px) {
     src += w;
   }
   lv_display_flush_ready(d);
+}
+
+// ---- what the firmware keeps in flash, here read from a folder
+std::string contentDir = "content";
+
+std::string slurp(const std::string& path) {
+  std::ifstream in(path, std::ios::binary);
+  std::stringstream buffer;
+  buffer << in.rdbuf();
+  return buffer.str();
+}
+
+// The picture goes through the same decoder as on the board.
+ui::Art artFor(const String& slug) {
+  static std::vector<uint16_t> pixels(static_cast<size_t>(content::kArtSide) * content::kArtSide);
+  static std::string shown;
+  ui::Art art;
+  const std::string bytes = slurp(contentDir + "/" + slug + ".jpg");
+  if (bytes.empty()) return art;
+  if (shown != slug) {
+    if (!content::decodeArt(reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size(), pixels.data())) {
+      fprintf(stderr, "sim: %s.jpg did not decode\n", slug.c_str());
+      shown.clear();
+      return art;
+    }
+    shown = slug;
+  }
+  art.pixels = reinterpret_cast<const uint8_t*>(pixels.data());
+  art.side = content::kArtSide;
+  return art;
+}
+
+ui::CelebrationText textFor(const String& slug) {
+  ui::CelebrationText text;
+  const std::string json = slurp(contentDir + "/" + slug + ".pt-BR.json");
+  model::parseCelebrationText(json.c_str(), json.size(), text);
+  return text;
+}
+
+// A day with a celebration, as a sync would have left it: the sample's
+// Wednesday, with the offices and the week it had on Monday.
+model::Today celebrationDay(const model::Today& base, int ahead) {
+  model::Today day = model::viewFor(base, base.day.days + ahead);
+  day.officesKnown = true;
+  for (int i = 0; i < 4; i++) day.offices[i] = base.offices[i];
+  day.completedToday = base.completedToday;
+  for (int i = 0; i < 7; i++) day.week[i] = base.week[i];
+  day.hasWeek = base.hasWeek;
+  return day;
 }
 
 // With animations on, a screen change takes a dip and a rise: every wait is
@@ -118,7 +170,8 @@ void tapRow(const char* label) {
     tapObject(row);
     return;
   }
-  fprintf(stderr, "sim: row \"%s\" not found\n", label);
+  fprintf(stderr, "sim: row \"%s\" not found (mode %d, %s)\n", label, static_cast<int>(ui::detail::S.mode),
+          lv_screen_active() == ui::detail::S.settings ? "list" : (lv_screen_active() == ui::detail::S.sub ? "sub" : "other"));
 }
 
 // Pokes everything a finger or a button can reach. Nothing here checks a
@@ -126,6 +179,7 @@ void tapRow(const char* label) {
 // screen frees something it still uses.
 void exercise(const model::Today& today) {
   using namespace ui;
+  using ui::detail::S;
   setToday(today);
   goHome();
   for (int lap = 0; lap < 2; lap++) {
@@ -164,6 +218,15 @@ void exercise(const model::Today& today) {
         tapRow(row);
       }
       for (int i = 0; i < 5; i++) tapRow("Tela inicial");        // all five and round again
+      // Following the app, the reminder rows only show the app's times...
+      S.prefs.remindersFromApp = true;
+      tapRow("Manhã");
+      settle(2);
+      // ...and set here, each opens its editor.
+      S.prefs.remindersFromApp = false;
+      tapRow("Horários");
+      tapRow("Horários");
+      S.prefs.remindersFromApp = false;
       tapRow("Manhã");
       for (int i = 0; i < 3; i++) { tap(111, 267); tap(177, 267); tap(289, 267); tap(355, 267); }
       tap(300, 364);                                           // Pronto
@@ -179,6 +242,21 @@ void exercise(const model::Today& today) {
       onSwipe(Swipe::Up);
       onSwipe(Swipe::Right);
       settle(2);
+      // The update screen, in each state the search can be in.
+      tapRow("Atualização");
+      for (UpdateState state : {UpdateState::Checking, UpdateState::Available, UpdateState::UpToDate, UpdateState::Failed}) {
+        Status st = S.status;
+        st.update = state;
+        st.updateVersion = state == UpdateState::Available ? "9.9.9" : "";
+        st.batteryPercent = state == UpdateState::Available ? 20 : 80;
+        setStatus(st);
+        settle(1);
+        tap(233, 296);                                         // Procurar agora
+        tap(233, 324);                                         // Instalar
+        settle(1);
+      }
+      onBootPress();
+      settle(2);
       for (const char* row : {"Desligar", "Desvincular do Ordo", "Apagar tudo"}) {
         tapRow(row);
         tap(170, 346);                                         // Cancelar
@@ -186,6 +264,32 @@ void exercise(const model::Today& today) {
       }
       onBootPress();
     }
+  }
+
+  // The celebration, if the day has one: open, read, back, closed, with a
+  // picture or its text arriving in the middle.
+  if (today.day.celebration.present()) {
+    detail::showPage(Page::Celebration);
+    settle(2);
+    tap(233, 200);                                             // opens
+    settle(6);
+    tap(233, 412);                                             // Ler tudo
+    settle(2);
+    onSwipe(Swipe::Up);
+    onSwipe(Swipe::Down);
+    contentArrived(today.day.celebration.slug);
+    onSwipe(Swipe::Right);                                     // back to the page, still open
+    settle(2);
+    tap(233, 120);                                             // closes
+    contentArrived(today.day.celebration.slug);
+    tap(233, 200);
+    onSwipe(Swipe::Up);                                        // leaves in the middle of the slide
+    settle(2);
+    onSwipe(Swipe::Down);
+    tap(233, 412);
+    onBootPress();
+    onBootPress();
+    settle(2);
   }
 
   // Notices over the day, dismissed every way there is.
@@ -227,6 +331,8 @@ void exercise(const model::Today& today) {
       case 6: dismissNotice(); detail::openSilence(); setSilence(true, 300); step(); setSilence(false, 0); break;
       case 7: detail::openTorch(); step(); step(); goHome(); for (int k = 0; k < i; k++) step(); break;
     }
+    if (i % 5 == 0) { detail::showPage(Page::Celebration); step(); tap(233, 200); detail::openReading(); step(); showUpdating("9.9.9", i); }
+    if (i % 7 == 0) { detail::openUpdate(); step(); Status st = S.status; st.update = static_cast<UpdateState>(i % 5); st.updateVersion = "9.9.9"; setStatus(st); }
   }
   settle(20);
 }
@@ -238,6 +344,16 @@ void film(const model::Today& today) {
   auto wait = [](int frames) { for (int i = 0; i < frames; i++) step(); };
   setToday(today);                       // the wake: the light rises on "Agora"
   wait(48);
+  onSwipe(Swipe::Up);                    // the celebration: its picture whole
+  wait(60);
+  tap(233, 200);                         // a touch: the words come up
+  wait(50);
+  tap(233, 412);                         // Ler tudo
+  wait(40);
+  lv_obj_scroll_to_y(lv_obj_get_child(lv_screen_active(), 0), 260, LV_ANIM_ON);
+  wait(45);
+  onSwipe(Swipe::Right);                 // back to the page
+  wait(36);
   for (int i = 0; i < 5; i++) {          // round the carousel to the menu
     onSwipe(Swipe::Up);
     wait(42);
@@ -333,6 +449,9 @@ int main(int argc, char** argv) {
     return d;
   };
   actions.silence = [](int minutes) { ui::setSilence(minutes > 0, static_cast<uint32_t>(minutes) * 60); };
+  if (const char* dir = getenv("ORDO_SIM_CONTENT")) contentDir = dir;
+  actions.art = artFor;
+  actions.celebrationText = textFor;
   ui::init(prefs, actions);
 
   ui::Status st;
@@ -350,7 +469,7 @@ int main(int argc, char** argv) {
     ui::init(prefs, actions);
     ui::setStatus(st);
     filming = true;
-    film(today);
+    film(celebrationDay(today, 2));
     printf("%d frames in %s\n", shot, outDir.c_str());
     return 0;
   }
@@ -366,6 +485,8 @@ int main(int argc, char** argv) {
     actions.factoryReset = []() {};
     actions.powerOff = []() {};
     actions.sleepNow = []() {};
+    actions.checkUpdate = []() {};
+    actions.installUpdate = []() {};
     int moves = 0;
     actions.brightnessMoved = [&moves]() { moves++; };
     for (int pass = 0; pass < 2; pass++) {
@@ -379,6 +500,8 @@ int main(int argc, char** argv) {
       st0.linked = true;
       ui::setStatus(st0);
       exercise(today);
+      exercise(celebrationDay(today, 2));                       // a celebration with its picture
+      exercise(model::viewFor(today, today.day.days + 5));      // one whose picture never came
       exercise(model::viewFor(today, today.day.days + 3));
       exercise(model::viewFor(today, today.day.days + 40));
       if (ui::changingScreen() || ui::brightnessScale() != 255) {
@@ -473,6 +596,45 @@ int main(int argc, char** argv) {
   snap("silencio-fim");
   ui::showLowBattery();
   snap("bateria");
+
+  // ---- a day with a celebration
+  ui::setToday(celebrationDay(today, 2));
+  ui::detail::showPage(ui::Page::Now);
+  snap("agora-comemoracao");
+  ui::detail::showPage(ui::Page::Celebration);
+  snap("comemoracao");
+  tap(233, 200);
+  snap("comemoracao-aberta");
+  ui::detail::openReading();
+  snap("comemoracao-texto");
+  lv_obj_scroll_to_y(lv_obj_get_child(ui::detail::S.sub, 0), 330, LV_ANIM_OFF);
+  snap("comemoracao-texto-2");
+  // Its picture has not come (or the CMS has none): the same page, in type.
+  ui::setToday(celebrationDay(today, 5));
+  ui::detail::showPage(ui::Page::Celebration);
+  snap("comemoracao-sem-foto");
+  // A day of abstinence.
+  ui::setToday(celebrationDay(today, 4));
+  ui::detail::showPage(ui::Page::Now);
+  snap("agora-jejum");
+  ui::setToday(today);
+
+  // ---- the firmware update
+  st.update = ui::UpdateState::Available;
+  st.updateVersion = "0.4.1";
+  st.updateNotes = "Fotos abrem mais depressa e o sino das horas ganhou volume próprio.";
+  ui::setStatus(st);
+  ui::detail::openUpdate();
+  snap("atualizacao-disponivel");
+  ui::showUpdating("0.4.1", 37);
+  snap("atualizando");
+  st.update = ui::UpdateState::UpToDate;
+  st.updateVersion = "";
+  st.updateNotes = "";
+  ui::setStatus(st);
+  ui::detail::openUpdate();
+  snap("atualizacao-em-dia");
+  ui::detail::showPage(ui::Page::Now);
 
   // ---- other days
   model::Today done = today;

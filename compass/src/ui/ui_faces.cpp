@@ -121,10 +121,18 @@ void buildNow(lv_obj_t* scr) {
   if (!day.season.isEmpty()) {
     text(scr, upper(day.season).c_str(), theme::tiny(), accent, 244, 2, 330);
   }
+  // A day of fasting or abstinence says so under the day's name, which then
+  // keeps to one line to leave it the room.
+  const bool fast = !day.observance.isEmpty();
   if (day.title != day.season) {
     lv_obj_t* title = text(scr, day.title.c_str(), theme::title(), theme::fg(), 268, 0, 320);
     lv_label_set_long_mode(title, LV_LABEL_LONG_MODE_DOTS);
-    lv_obj_set_height(title, 62);
+    lv_obj_set_height(title, fast ? 31 : 62);
+  }
+  if (fast) {
+    lv_obj_t* observance = text(scr, day.observance.c_str(), theme::italic(), lv_color_hex(0xA99BD1), day.title != day.season ? 302 : 270, 0, 300);
+    lv_label_set_long_mode(observance, LV_LABEL_LONG_MODE_DOTS);
+    lv_obj_set_height(observance, 26);
   }
 
   // The office the hour calls for, with the time of its reminder if one is set.
@@ -135,7 +143,7 @@ void buildNow(lv_obj_t* scr) {
     snprintf(office, sizeof(office), "Laus Deo");
     officeColor = theme::gold();
   } else if (next >= 0) {
-    const int16_t at = S.prefs.reminder[next];
+    const int16_t at = reminderFor(next);
     if (at >= 0) snprintf(office, sizeof(office), "%s  ·  %s", officeName(next), clockText(at).c_str());
     else snprintf(office, sizeof(office), "%s", officeName(next));
   }
@@ -163,8 +171,25 @@ void buildCompass(lv_obj_t* scr) {
   lv_obj_t* title = text(scr, day.title.c_str(), theme::title(), accent, 248, 0, 300);
   lv_label_set_long_mode(title, LV_LABEL_LONG_MODE_DOTS);
   lv_obj_set_height(title, 62);
-  if (!day.season.isEmpty() && day.season != day.title) {
-    text(scr, day.season.c_str(), theme::tiny(), theme::dim(), 314, 1, 280);
+  // "Tempo Comum · Advento em 19 dias": exact, when the API said where the
+  // season stands; the season's name alone otherwise.
+  char line[96] = "";
+  if (t.season.known && !t.season.nextName.isEmpty() && t.season.nextInDays > 0) {
+    char ahead[56];
+    if (t.season.nextInDays == 1) {
+      snprintf(ahead, sizeof(ahead), "%s %s", t.season.nextName.c_str(), tr("amanhã", "tomorrow", "mañana"));
+    } else {
+      snprintf(ahead, sizeof(ahead), tr("%s em %d dias", "%s in %d days", "%s en %d días"), t.season.nextName.c_str(), t.season.nextInDays);
+    }
+    if (!day.season.isEmpty() && day.season != day.title) snprintf(line, sizeof(line), "%s  ·  %s", day.season.c_str(), ahead);
+    else snprintf(line, sizeof(line), "%s", ahead);
+  } else if (!day.season.isEmpty() && day.season != day.title) {
+    snprintf(line, sizeof(line), "%s", day.season.c_str());
+  }
+  if (line[0]) {
+    lv_obj_t* season = text(scr, line, theme::tiny(), theme::dim(), 314, 1, 310);
+    lv_label_set_long_mode(season, LV_LABEL_LONG_MODE_DOTS);
+    lv_obj_set_height(season, 20);
   }
 
   const int next = S.status.clockValid ? t.officeForMinute(S.status.minuteOfDay) : t.nextOfficeIndex();

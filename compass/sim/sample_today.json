@@ -1,672 +1,762 @@
 {
- "schema_version": 1,
- "date": "2026-11-09",
- "timezone": "America/Sao_Paulo",
- "utc_offset_seconds": -10800,
- "prayer_book": "loc_2015",
- "language": "pt-BR",
- "day": {
-  "weekday": "Segunda-feira",
-  "title": "Próprio 27",
-  "season": "Tempo Comum",
-  "book_season": null,
-  "celebration": null,
-  "is_sunday": false,
-  "is_holy_day": false,
-  "fast_day": false,
-  "color": "green",
-  "color_hex": "#66BB6A"
- },
- "readings": {
-  "daily": [
-   {
-    "slot": "first_reading",
-    "reference": "Neemias 7.73b-8.3"
-   },
-   {
-    "slot": "psalm",
-    "reference": "Salmo 77"
-   },
-   {
-    "slot": "second_reading",
-    "reference": "I Tessalonicenses 3.1-5"
-   },
-   {
-    "slot": "gospel",
-    "reference": "Lucas 14.12-24"
-   }
-  ],
-  "morning": [
-   {
-    "slot": "first_reading",
-    "reference": "Neemias 7.73b-8.3"
-   },
-   {
-    "slot": "psalm",
-    "reference": "Salmo 77"
-   },
-   {
-    "slot": "second_reading",
-    "reference": "I Tessalonicenses 3.1-5"
-   },
-   {
-    "slot": "gospel",
-    "reference": "Lucas 14.12-24"
-   }
-  ],
-  "evening": [
-   {
-    "slot": "first_reading",
-    "reference": "Neemias 7.73b-8.3"
-   },
-   {
-    "slot": "psalm",
-    "reference": "Salmo 77"
-   },
-   {
-    "slot": "second_reading",
-    "reference": "I Tessalonicenses 3.1-5"
-   },
-   {
-    "slot": "gospel",
-    "reference": "Lucas 14.12-24"
-   }
-  ]
- },
- "year_ring": {
-  "from": "2025-11-30",
-  "to": "2026-11-28",
-  "progress": 0.945,
-  "segments": [
-   {
-    "season": "advent",
-    "name": "Advento",
-    "from": "2025-11-30",
-    "to": "2025-12-24",
-    "color": "purple",
-    "color_hex": "#A99BD1"
-   },
-   {
-    "season": "christmas",
-    "name": "Natal",
-    "from": "2025-12-25",
-    "to": "2026-01-05",
-    "color": "white",
-    "color_hex": "#E8C968"
-   },
-   {
-    "season": "epiphany",
-    "name": "Epifania",
-    "from": "2026-01-06",
-    "to": "2026-02-17",
-    "color": "green",
-    "color_hex": "#66BB6A"
-   },
-   {
-    "season": "lent",
-    "name": "Quaresma",
-    "from": "2026-02-18",
-    "to": "2026-03-28",
-    "color": "purple",
-    "color_hex": "#A99BD1"
-   },
-   {
-    "season": "holy_week",
-    "name": "Semana Santa",
-    "from": "2026-03-29",
-    "to": "2026-04-04",
-    "color": "red",
-    "color_hex": "#EF5350"
-   },
-   {
-    "season": "easter",
-    "name": "Páscoa",
-    "from": "2026-04-05",
-    "to": "2026-05-23",
-    "color": "white",
-    "color_hex": "#E8C968"
-   },
-   {
-    "season": "pentecost",
-    "name": "Pentecostes",
-    "from": "2026-05-24",
-    "to": "2026-05-30",
-    "color": "red",
-    "color_hex": "#EF5350"
-   },
-   {
-    "season": "ordinary",
-    "name": "Tempo Comum",
-    "from": "2026-05-31",
-    "to": "2026-11-28",
-    "color": "green",
-    "color_hex": "#66BB6A"
-   }
-  ],
-  "feasts": [
-   {
-    "date": "2025-12-25",
-    "name": "Natal",
-    "color": "white",
-    "color_hex": "#E8C968"
-   },
-   {
-    "date": "2026-01-06",
-    "name": "Epifania",
-    "color": "white",
-    "color_hex": "#E8C968"
-   },
-   {
-    "date": "2026-02-18",
-    "name": "Cinzas",
-    "color": "purple",
-    "color_hex": "#A99BD1"
-   },
-   {
-    "date": "2026-04-05",
-    "name": "Páscoa",
-    "color": "white",
-    "color_hex": "#E8C968"
-   },
-   {
-    "date": "2026-05-14",
-    "name": "Ascensão",
-    "color": "white",
-    "color_hex": "#E8C968"
-   },
-   {
-    "date": "2026-05-24",
-    "name": "Pentecostes",
-    "color": "red",
-    "color_hex": "#EF5350"
-   },
-   {
-    "date": "2026-05-31",
-    "name": "Trindade",
-    "color": "white",
-    "color_hex": "#E8C968"
-   },
-   {
-    "date": "2026-11-01",
-    "name": "Todos os Santos",
-    "color": "white",
-    "color_hex": "#E8C968"
-   },
-   {
-    "date": "2026-11-22",
-    "name": "Cristo Rei",
-    "color": "white",
-    "color_hex": "#E8C968"
-   }
-  ]
- },
- "upcoming": [
-  {
-   "date": "2026-11-10",
-   "day": {
-    "weekday": "Terça-feira",
-    "title": "Próprio 27",
-    "season": "Tempo Comum",
-    "book_season": null,
-    "celebration": {
-     "name": "Leão Magno",
-     "type": "lesser_feast"
-    },
-    "is_sunday": false,
-    "is_holy_day": false,
-    "fast_day": false,
-    "color": "white",
-    "color_hex": "#E8C968"
-   },
-   "readings": {
-    "daily": [
-     {
-      "slot": "first_reading",
-      "reference": "Neemias 8.1-12"
-     },
-     {
-      "slot": "psalm",
-      "reference": "Salmo 78"
-     },
-     {
-      "slot": "second_reading",
-      "reference": "I Tessalonicenses 3.6-13"
-     }
-    ],
-    "morning": [
-     {
-      "slot": "first_reading",
-      "reference": "Neemias 8.1-12"
-     },
-     {
-      "slot": "psalm",
-      "reference": "Salmo 78"
-     },
-     {
-      "slot": "second_reading",
-      "reference": "I Tessalonicenses 3.6-13"
-     }
-    ],
-    "evening": [
-     {
-      "slot": "first_reading",
-      "reference": "Neemias 8.1-12"
-     },
-     {
-      "slot": "psalm",
-      "reference": "Salmo 78"
-     },
-     {
-      "slot": "second_reading",
-      "reference": "I Tessalonicenses 3.6-13"
-     }
-    ]
-   }
-  },
-  {
-   "date": "2026-11-11",
-   "day": {
-    "weekday": "Quarta-feira",
-    "title": "Próprio 27",
-    "season": "Tempo Comum",
-    "book_season": null,
-    "celebration": {
-     "name": "Martinho de Tours",
-     "type": "lesser_feast"
-    },
-    "is_sunday": false,
-    "is_holy_day": false,
-    "fast_day": false,
-    "color": "white",
-    "color_hex": "#E8C968"
-   },
-   "readings": {
-    "daily": [
-     {
-      "slot": "first_reading",
-      "reference": "Neemias 8.13-18"
-     },
-     {
-      "slot": "psalm",
-      "reference": "Salmo 119.97-120"
-     },
-     {
-      "slot": "second_reading",
-      "reference": "I Tessalonicenses 4.1-12"
-     }
-    ],
-    "morning": [
-     {
-      "slot": "first_reading",
-      "reference": "Neemias 8.13-18"
-     },
-     {
-      "slot": "psalm",
-      "reference": "Salmo 119.97-120"
-     },
-     {
-      "slot": "second_reading",
-      "reference": "I Tessalonicenses 4.1-12"
-     }
-    ],
-    "evening": [
-     {
-      "slot": "first_reading",
-      "reference": "Neemias 8.13-18"
-     },
-     {
-      "slot": "psalm",
-      "reference": "Salmo 119.97-120"
-     },
-     {
-      "slot": "second_reading",
-      "reference": "I Tessalonicenses 4.1-12"
-     }
-    ]
-   }
-  },
-  {
-   "date": "2026-11-12",
-   "day": {
-    "weekday": "Quinta-feira",
-    "title": "Próprio 27",
-    "season": "Tempo Comum",
-    "book_season": null,
-    "celebration": null,
-    "is_sunday": false,
-    "is_holy_day": false,
-    "fast_day": false,
-    "color": "green",
-    "color_hex": "#66BB6A"
-   },
-   "readings": {
-    "daily": [
-     {
-      "slot": "first_reading",
-      "reference": "Neemias 9.1-15"
-     },
-     {
-      "slot": "psalm",
-      "reference": "Salmo 83"
-     },
-     {
-      "slot": "second_reading",
-      "reference": "I Tessalonicenses 4.13-5.11"
-     }
-    ],
-    "morning": [
-     {
-      "slot": "first_reading",
-      "reference": "Neemias 9.1-15"
-     },
-     {
-      "slot": "psalm",
-      "reference": "Salmo 83"
-     },
-     {
-      "slot": "second_reading",
-      "reference": "I Tessalonicenses 4.13-5.11"
-     }
-    ],
-    "evening": [
-     {
-      "slot": "first_reading",
-      "reference": "Neemias 9.1-15"
-     },
-     {
-      "slot": "psalm",
-      "reference": "Salmo 83"
-     },
-     {
-      "slot": "second_reading",
-      "reference": "I Tessalonicenses 4.13-5.11"
-     }
-    ]
-   }
-  },
-  {
-   "date": "2026-11-13",
-   "day": {
-    "weekday": "Sexta-feira",
-    "title": "Próprio 27",
-    "season": "Tempo Comum",
-    "book_season": null,
-    "celebration": null,
-    "is_sunday": false,
-    "is_holy_day": false,
-    "fast_day": true,
-    "color": "green",
-    "color_hex": "#66BB6A"
-   },
-   "readings": {
-    "daily": [
-     {
-      "slot": "first_reading",
-      "reference": "Neemias 9.16-25"
-     },
-     {
-      "slot": "psalm",
-      "reference": "Salmo 88"
-     },
-     {
-      "slot": "second_reading",
-      "reference": "I Tessalonicenses 5.12-28"
-     }
-    ],
-    "morning": [
-     {
-      "slot": "first_reading",
-      "reference": "Neemias 9.16-25"
-     },
-     {
-      "slot": "psalm",
-      "reference": "Salmo 88"
-     },
-     {
-      "slot": "second_reading",
-      "reference": "I Tessalonicenses 5.12-28"
-     }
-    ],
-    "evening": [
-     {
-      "slot": "first_reading",
-      "reference": "Neemias 9.16-25"
-     },
-     {
-      "slot": "psalm",
-      "reference": "Salmo 88"
-     },
-     {
-      "slot": "second_reading",
-      "reference": "I Tessalonicenses 5.12-28"
-     }
-    ]
-   }
-  },
-  {
-   "date": "2026-11-14",
-   "day": {
-    "weekday": "Sábado",
-    "title": "Próprio 27",
-    "season": "Tempo Comum",
-    "book_season": null,
-    "celebration": {
-     "name": "Consagração de Samuel Seabury",
-     "type": "lesser_feast"
-    },
-    "is_sunday": false,
-    "is_holy_day": false,
-    "fast_day": false,
-    "color": "white",
-    "color_hex": "#E8C968"
-   },
-   "readings": {
-    "daily": [
-     {
-      "slot": "first_reading",
-      "reference": "Neemias 9.26-38"
-     },
-     {
-      "slot": "psalm",
-      "reference": "Salmo 87"
-     },
-     {
-      "slot": "second_reading",
-      "reference": "II Tessalonicenses 1.1-12"
-     }
-    ],
-    "morning": [
-     {
-      "slot": "first_reading",
-      "reference": "Neemias 9.26-38"
-     },
-     {
-      "slot": "psalm",
-      "reference": "Salmo 87"
-     },
-     {
-      "slot": "second_reading",
-      "reference": "II Tessalonicenses 1.1-12"
-     }
-    ],
-    "evening": [
-     {
-      "slot": "first_reading",
-      "reference": "Neemias 9.26-38"
-     },
-     {
-      "slot": "psalm",
-      "reference": "Salmo 87"
-     },
-     {
-      "slot": "second_reading",
-      "reference": "II Tessalonicenses 1.1-12"
-     }
-    ]
-   }
-  },
-  {
-   "date": "2026-11-15",
-   "day": {
-    "weekday": "Domingo",
-    "title": "Próprio 28",
-    "season": "Tempo Comum",
-    "book_season": null,
-    "celebration": null,
-    "is_sunday": true,
-    "is_holy_day": false,
-    "fast_day": false,
-    "color": "green",
-    "color_hex": "#66BB6A"
-   },
-   "readings": {
-    "daily": [
-     {
-      "slot": "first_reading",
-      "reference": "Daniel 12.1-3"
-     },
-     {
-      "slot": "psalm",
-      "reference": "Salmo 16"
-     },
-     {
-      "slot": "second_reading",
-      "reference": "Hebreus 10.11-25"
-     },
-     {
-      "slot": "gospel",
-      "reference": "Marcos 13.1-8"
-     }
-    ],
-    "morning": [
-     {
-      "slot": "first_reading",
-      "reference": "Daniel 12.1-3"
-     },
-     {
-      "slot": "psalm",
-      "reference": "Salmo 16"
-     },
-     {
-      "slot": "second_reading",
-      "reference": "Hebreus 10.11-25"
-     },
-     {
-      "slot": "gospel",
-      "reference": "Marcos 13.1-8"
-     }
-    ],
-    "evening": [
-     {
-      "slot": "first_reading",
-      "reference": "Daniel 12.1-3"
-     },
-     {
-      "slot": "psalm",
-      "reference": "Salmo 16"
-     },
-     {
-      "slot": "second_reading",
-      "reference": "Hebreus 10.11-25"
-     },
-     {
-      "slot": "gospel",
-      "reference": "Marcos 13.1-8"
-     }
-    ]
-   }
-  },
-  {
-   "date": "2026-11-16",
-   "day": {
+  "schema_version": 1,
+  "date": "2026-11-09",
+  "timezone": "America/Sao_Paulo",
+  "utc_offset_seconds": -10800,
+  "prayer_book": "loc_2015",
+  "language": "pt-BR",
+  "day": {
     "weekday": "Segunda-feira",
-    "title": "Próprio 28",
+    "title": "Próprio 27",
     "season": "Tempo Comum",
     "book_season": null,
-    "celebration": {
-     "name": "Margarida da Escócia",
-     "type": "lesser_feast"
-    },
+    "celebration": null,
     "is_sunday": false,
     "is_holy_day": false,
     "fast_day": false,
-    "color": "white",
-    "color_hex": "#E8C968"
-   },
-   "readings": {
+    "color": "green",
+    "color_hex": "#66BB6A",
+    "observance": null
+  },
+  "readings": {
     "daily": [
-     {
-      "slot": "first_reading",
-      "reference": "Neemias 10.28-39"
-     },
-     {
-      "slot": "psalm",
-      "reference": "Salmo 89.1-18"
-     },
-     {
-      "slot": "second_reading",
-      "reference": "II Tessalonicenses 2.1-12"
-     }
+      {
+        "slot": "first_reading",
+        "reference": "Neemias 7.73b-8.3"
+      },
+      {
+        "slot": "psalm",
+        "reference": "Salmo 77"
+      },
+      {
+        "slot": "second_reading",
+        "reference": "I Tessalonicenses 3.1-5"
+      },
+      {
+        "slot": "gospel",
+        "reference": "Lucas 14.12-24"
+      }
     ],
     "morning": [
-     {
-      "slot": "first_reading",
-      "reference": "Neemias 10.28-39"
-     },
-     {
-      "slot": "psalm",
-      "reference": "Salmo 89.1-18"
-     },
-     {
-      "slot": "second_reading",
-      "reference": "II Tessalonicenses 2.1-12"
-     }
+      {
+        "slot": "first_reading",
+        "reference": "Neemias 7.73b-8.3"
+      },
+      {
+        "slot": "psalm",
+        "reference": "Salmo 77"
+      },
+      {
+        "slot": "second_reading",
+        "reference": "I Tessalonicenses 3.1-5"
+      },
+      {
+        "slot": "gospel",
+        "reference": "Lucas 14.12-24"
+      }
     ],
     "evening": [
-     {
-      "slot": "first_reading",
-      "reference": "Neemias 10.28-39"
-     },
-     {
-      "slot": "psalm",
-      "reference": "Salmo 89.1-18"
-     },
-     {
-      "slot": "second_reading",
-      "reference": "II Tessalonicenses 2.1-12"
-     }
+      {
+        "slot": "first_reading",
+        "reference": "Neemias 7.73b-8.3"
+      },
+      {
+        "slot": "psalm",
+        "reference": "Salmo 77"
+      },
+      {
+        "slot": "second_reading",
+        "reference": "I Tessalonicenses 3.1-5"
+      },
+      {
+        "slot": "gospel",
+        "reference": "Lucas 14.12-24"
+      }
     ]
-   }
+  },
+  "year_ring": {
+    "from": "2025-11-30",
+    "to": "2026-11-28",
+    "progress": 0.945,
+    "segments": [
+      {
+        "season": "advent",
+        "name": "Advento",
+        "from": "2025-11-30",
+        "to": "2025-12-24",
+        "color": "purple",
+        "color_hex": "#A99BD1"
+      },
+      {
+        "season": "christmas",
+        "name": "Natal",
+        "from": "2025-12-25",
+        "to": "2026-01-05",
+        "color": "white",
+        "color_hex": "#E8C968"
+      },
+      {
+        "season": "epiphany",
+        "name": "Epifania",
+        "from": "2026-01-06",
+        "to": "2026-02-17",
+        "color": "green",
+        "color_hex": "#66BB6A"
+      },
+      {
+        "season": "lent",
+        "name": "Quaresma",
+        "from": "2026-02-18",
+        "to": "2026-03-28",
+        "color": "purple",
+        "color_hex": "#A99BD1"
+      },
+      {
+        "season": "holy_week",
+        "name": "Semana Santa",
+        "from": "2026-03-29",
+        "to": "2026-04-04",
+        "color": "red",
+        "color_hex": "#EF5350"
+      },
+      {
+        "season": "easter",
+        "name": "Páscoa",
+        "from": "2026-04-05",
+        "to": "2026-05-23",
+        "color": "white",
+        "color_hex": "#E8C968"
+      },
+      {
+        "season": "pentecost",
+        "name": "Pentecostes",
+        "from": "2026-05-24",
+        "to": "2026-05-30",
+        "color": "red",
+        "color_hex": "#EF5350"
+      },
+      {
+        "season": "ordinary",
+        "name": "Tempo Comum",
+        "from": "2026-05-31",
+        "to": "2026-11-28",
+        "color": "green",
+        "color_hex": "#66BB6A"
+      }
+    ],
+    "feasts": [
+      {
+        "date": "2025-12-25",
+        "name": "Natal",
+        "color": "white",
+        "color_hex": "#E8C968"
+      },
+      {
+        "date": "2026-01-06",
+        "name": "Epifania",
+        "color": "white",
+        "color_hex": "#E8C968"
+      },
+      {
+        "date": "2026-02-18",
+        "name": "Cinzas",
+        "color": "purple",
+        "color_hex": "#A99BD1"
+      },
+      {
+        "date": "2026-04-05",
+        "name": "Páscoa",
+        "color": "white",
+        "color_hex": "#E8C968"
+      },
+      {
+        "date": "2026-05-14",
+        "name": "Ascensão",
+        "color": "white",
+        "color_hex": "#E8C968"
+      },
+      {
+        "date": "2026-05-24",
+        "name": "Pentecostes",
+        "color": "red",
+        "color_hex": "#EF5350"
+      },
+      {
+        "date": "2026-05-31",
+        "name": "Trindade",
+        "color": "white",
+        "color_hex": "#E8C968"
+      },
+      {
+        "date": "2026-11-01",
+        "name": "Todos os Santos",
+        "color": "white",
+        "color_hex": "#E8C968"
+      },
+      {
+        "date": "2026-11-22",
+        "name": "Cristo Rei",
+        "color": "white",
+        "color_hex": "#E8C968"
+      }
+    ]
+  },
+  "upcoming": [
+    {
+      "date": "2026-11-10",
+      "day": {
+        "weekday": "Terça-feira",
+        "title": "Próprio 27",
+        "season": "Tempo Comum",
+        "book_season": null,
+        "celebration": {
+          "name": "Alice Kinsolving",
+          "type": "lesser_feast",
+          "epithet": "Sustentadora da Missão",
+          "year": "1944",
+          "slug": "celebration-alice-kinsolving",
+          "content": {
+            "art": "/c/celebration-alice-kinsolving.jpg?t=2954&s=0123456789abcdef0123456789abcdef",
+            "text": "/c/celebration-alice-kinsolving.pt-BR.json?t=2954&s=fedcba9876543210fedcba9876543210"
+          }
+        },
+        "is_sunday": false,
+        "is_holy_day": false,
+        "fast_day": false,
+        "color": "white",
+        "color_hex": "#E8C968",
+        "observance": null
+      },
+      "readings": {
+        "daily": [
+          {
+            "slot": "first_reading",
+            "reference": "Neemias 8.1-12"
+          },
+          {
+            "slot": "psalm",
+            "reference": "Salmo 78"
+          },
+          {
+            "slot": "second_reading",
+            "reference": "I Tessalonicenses 3.6-13"
+          }
+        ],
+        "morning": [
+          {
+            "slot": "first_reading",
+            "reference": "Neemias 8.1-12"
+          },
+          {
+            "slot": "psalm",
+            "reference": "Salmo 78"
+          },
+          {
+            "slot": "second_reading",
+            "reference": "I Tessalonicenses 3.6-13"
+          }
+        ],
+        "evening": [
+          {
+            "slot": "first_reading",
+            "reference": "Neemias 8.1-12"
+          },
+          {
+            "slot": "psalm",
+            "reference": "Salmo 78"
+          },
+          {
+            "slot": "second_reading",
+            "reference": "I Tessalonicenses 3.6-13"
+          }
+        ]
+      }
+    },
+    {
+      "date": "2026-11-11",
+      "day": {
+        "weekday": "Quarta-feira",
+        "title": "Próprio 27",
+        "season": "Tempo Comum",
+        "book_season": null,
+        "celebration": {
+          "name": "Martinho de Tours",
+          "type": "lesser_feast",
+          "epithet": "Monge e Bispo",
+          "year": "397",
+          "slug": "celebration-martin-of-tours",
+          "content": {
+            "art": "/c/celebration-martin-of-tours.jpg?t=2954&s=0123456789abcdef0123456789abcdef",
+            "text": "/c/celebration-martin-of-tours.pt-BR.json?t=2954&s=fedcba9876543210fedcba9876543210"
+          }
+        },
+        "is_sunday": false,
+        "is_holy_day": false,
+        "fast_day": false,
+        "color": "white",
+        "color_hex": "#E8C968",
+        "observance": null
+      },
+      "readings": {
+        "daily": [
+          {
+            "slot": "first_reading",
+            "reference": "Neemias 8.13-18"
+          },
+          {
+            "slot": "psalm",
+            "reference": "Salmo 119.97-120"
+          },
+          {
+            "slot": "second_reading",
+            "reference": "I Tessalonicenses 4.1-12"
+          }
+        ],
+        "morning": [
+          {
+            "slot": "first_reading",
+            "reference": "Neemias 8.13-18"
+          },
+          {
+            "slot": "psalm",
+            "reference": "Salmo 119.97-120"
+          },
+          {
+            "slot": "second_reading",
+            "reference": "I Tessalonicenses 4.1-12"
+          }
+        ],
+        "evening": [
+          {
+            "slot": "first_reading",
+            "reference": "Neemias 8.13-18"
+          },
+          {
+            "slot": "psalm",
+            "reference": "Salmo 119.97-120"
+          },
+          {
+            "slot": "second_reading",
+            "reference": "I Tessalonicenses 4.1-12"
+          }
+        ]
+      }
+    },
+    {
+      "date": "2026-11-12",
+      "day": {
+        "weekday": "Quinta-feira",
+        "title": "Próprio 27",
+        "season": "Tempo Comum",
+        "book_season": null,
+        "celebration": null,
+        "is_sunday": false,
+        "is_holy_day": false,
+        "fast_day": false,
+        "color": "green",
+        "color_hex": "#66BB6A",
+        "observance": null
+      },
+      "readings": {
+        "daily": [
+          {
+            "slot": "first_reading",
+            "reference": "Neemias 9.1-15"
+          },
+          {
+            "slot": "psalm",
+            "reference": "Salmo 83"
+          },
+          {
+            "slot": "second_reading",
+            "reference": "I Tessalonicenses 4.13-5.11"
+          }
+        ],
+        "morning": [
+          {
+            "slot": "first_reading",
+            "reference": "Neemias 9.1-15"
+          },
+          {
+            "slot": "psalm",
+            "reference": "Salmo 83"
+          },
+          {
+            "slot": "second_reading",
+            "reference": "I Tessalonicenses 4.13-5.11"
+          }
+        ],
+        "evening": [
+          {
+            "slot": "first_reading",
+            "reference": "Neemias 9.1-15"
+          },
+          {
+            "slot": "psalm",
+            "reference": "Salmo 83"
+          },
+          {
+            "slot": "second_reading",
+            "reference": "I Tessalonicenses 4.13-5.11"
+          }
+        ]
+      }
+    },
+    {
+      "date": "2026-11-13",
+      "day": {
+        "weekday": "Sexta-feira",
+        "title": "Próprio 27",
+        "season": "Tempo Comum",
+        "book_season": null,
+        "celebration": null,
+        "is_sunday": false,
+        "is_holy_day": false,
+        "fast_day": true,
+        "color": "green",
+        "color_hex": "#66BB6A",
+        "observance": {
+          "kind": "discipline_and_conversion",
+          "label": "Dia de devoção especial e conversão a Deus",
+          "short": "Devoção e conversão"
+        }
+      },
+      "readings": {
+        "daily": [
+          {
+            "slot": "first_reading",
+            "reference": "Neemias 9.16-25"
+          },
+          {
+            "slot": "psalm",
+            "reference": "Salmo 88"
+          },
+          {
+            "slot": "second_reading",
+            "reference": "I Tessalonicenses 5.12-28"
+          }
+        ],
+        "morning": [
+          {
+            "slot": "first_reading",
+            "reference": "Neemias 9.16-25"
+          },
+          {
+            "slot": "psalm",
+            "reference": "Salmo 88"
+          },
+          {
+            "slot": "second_reading",
+            "reference": "I Tessalonicenses 5.12-28"
+          }
+        ],
+        "evening": [
+          {
+            "slot": "first_reading",
+            "reference": "Neemias 9.16-25"
+          },
+          {
+            "slot": "psalm",
+            "reference": "Salmo 88"
+          },
+          {
+            "slot": "second_reading",
+            "reference": "I Tessalonicenses 5.12-28"
+          }
+        ]
+      }
+    },
+    {
+      "date": "2026-11-14",
+      "day": {
+        "weekday": "Sábado",
+        "title": "Próprio 27",
+        "season": "Tempo Comum",
+        "book_season": null,
+        "celebration": {
+          "name": "Samuel Seabury",
+          "type": "lesser_feast",
+          "epithet": "Primeiro Bispo da Igreja Episcopal dos Estados Unidos e Testemunha Profética",
+          "year": "1796",
+          "slug": "celebration-samuel-seabury-consecration",
+          "content": {
+            "art": "/c/celebration-samuel-seabury-consecration.jpg?t=2954&s=0123456789abcdef0123456789abcdef",
+            "text": "/c/celebration-samuel-seabury-consecration.pt-BR.json?t=2954&s=fedcba9876543210fedcba9876543210"
+          }
+        },
+        "is_sunday": false,
+        "is_holy_day": false,
+        "fast_day": false,
+        "color": "white",
+        "color_hex": "#E8C968",
+        "observance": null
+      },
+      "readings": {
+        "daily": [
+          {
+            "slot": "first_reading",
+            "reference": "Neemias 9.26-38"
+          },
+          {
+            "slot": "psalm",
+            "reference": "Salmo 87"
+          },
+          {
+            "slot": "second_reading",
+            "reference": "II Tessalonicenses 1.1-12"
+          }
+        ],
+        "morning": [
+          {
+            "slot": "first_reading",
+            "reference": "Neemias 9.26-38"
+          },
+          {
+            "slot": "psalm",
+            "reference": "Salmo 87"
+          },
+          {
+            "slot": "second_reading",
+            "reference": "II Tessalonicenses 1.1-12"
+          }
+        ],
+        "evening": [
+          {
+            "slot": "first_reading",
+            "reference": "Neemias 9.26-38"
+          },
+          {
+            "slot": "psalm",
+            "reference": "Salmo 87"
+          },
+          {
+            "slot": "second_reading",
+            "reference": "II Tessalonicenses 1.1-12"
+          }
+        ]
+      }
+    },
+    {
+      "date": "2026-11-15",
+      "day": {
+        "weekday": "Domingo",
+        "title": "Próprio 28",
+        "season": "Tempo Comum",
+        "book_season": null,
+        "celebration": null,
+        "is_sunday": true,
+        "is_holy_day": false,
+        "fast_day": false,
+        "color": "green",
+        "color_hex": "#66BB6A",
+        "observance": null
+      },
+      "readings": {
+        "daily": [
+          {
+            "slot": "first_reading",
+            "reference": "Daniel 12.1-3"
+          },
+          {
+            "slot": "psalm",
+            "reference": "Salmo 16"
+          },
+          {
+            "slot": "second_reading",
+            "reference": "Hebreus 10.11-25"
+          },
+          {
+            "slot": "gospel",
+            "reference": "Marcos 13.1-8"
+          }
+        ],
+        "morning": [
+          {
+            "slot": "first_reading",
+            "reference": "Daniel 12.1-3"
+          },
+          {
+            "slot": "psalm",
+            "reference": "Salmo 16"
+          },
+          {
+            "slot": "second_reading",
+            "reference": "Hebreus 10.11-25"
+          },
+          {
+            "slot": "gospel",
+            "reference": "Marcos 13.1-8"
+          }
+        ],
+        "evening": [
+          {
+            "slot": "first_reading",
+            "reference": "Daniel 12.1-3"
+          },
+          {
+            "slot": "psalm",
+            "reference": "Salmo 16"
+          },
+          {
+            "slot": "second_reading",
+            "reference": "Hebreus 10.11-25"
+          },
+          {
+            "slot": "gospel",
+            "reference": "Marcos 13.1-8"
+          }
+        ]
+      }
+    },
+    {
+      "date": "2026-11-16",
+      "day": {
+        "weekday": "Segunda-feira",
+        "title": "Próprio 28",
+        "season": "Tempo Comum",
+        "book_season": null,
+        "celebration": {
+          "name": "Margarida da Escócia",
+          "type": "lesser_feast",
+          "epithet": "Reformadora e Testemunha Profética",
+          "year": "1093",
+          "slug": "celebration-margaret-of-scotland",
+          "content": {
+            "art": "/c/celebration-margaret-of-scotland.jpg?t=2954&s=0123456789abcdef0123456789abcdef",
+            "text": "/c/celebration-margaret-of-scotland.pt-BR.json?t=2954&s=fedcba9876543210fedcba9876543210"
+          }
+        },
+        "is_sunday": false,
+        "is_holy_day": false,
+        "fast_day": false,
+        "color": "white",
+        "color_hex": "#E8C968",
+        "observance": null
+      },
+      "readings": {
+        "daily": [
+          {
+            "slot": "first_reading",
+            "reference": "Neemias 10.28-39"
+          },
+          {
+            "slot": "psalm",
+            "reference": "Salmo 89.1-18"
+          },
+          {
+            "slot": "second_reading",
+            "reference": "II Tessalonicenses 2.1-12"
+          }
+        ],
+        "morning": [
+          {
+            "slot": "first_reading",
+            "reference": "Neemias 10.28-39"
+          },
+          {
+            "slot": "psalm",
+            "reference": "Salmo 89.1-18"
+          },
+          {
+            "slot": "second_reading",
+            "reference": "II Tessalonicenses 2.1-12"
+          }
+        ],
+        "evening": [
+          {
+            "slot": "first_reading",
+            "reference": "Neemias 10.28-39"
+          },
+          {
+            "slot": "psalm",
+            "reference": "Salmo 89.1-18"
+          },
+          {
+            "slot": "second_reading",
+            "reference": "II Tessalonicenses 2.1-12"
+          }
+        ]
+      }
+    }
+  ],
+  "offices": {
+    "morning": {
+      "done": true,
+      "completed_at": "2026-11-09T07:12:00-03:00"
+    },
+    "midday": {
+      "done": true,
+      "completed_at": "2026-11-09T12:20:00-03:00"
+    },
+    "evening": {
+      "done": false,
+      "completed_at": null
+    },
+    "compline": {
+      "done": false,
+      "completed_at": null
+    },
+    "completed_today": [
+      "midday",
+      "morning"
+    ]
+  },
+  "streak": {
+    "current": 12,
+    "longest": 40
+  },
+  "season_progress": {
+    "starts_on": "2026-05-25",
+    "ends_on": "2026-11-28",
+    "day": 169,
+    "days": 188,
+    "next": {
+      "name": "Advento",
+      "in_days": 20
+    }
+  },
+  "reminders": [
+    {
+      "office": "morning",
+      "time": "07:00"
+    },
+    {
+      "office": "evening",
+      "time": "18:00"
+    }
+  ],
+  "week": [
+    {
+      "date": "2026-11-03",
+      "completed": 4
+    },
+    {
+      "date": "2026-11-04",
+      "completed": 3
+    },
+    {
+      "date": "2026-11-05",
+      "completed": 0
+    },
+    {
+      "date": "2026-11-06",
+      "completed": 2
+    },
+    {
+      "date": "2026-11-07",
+      "completed": 4
+    },
+    {
+      "date": "2026-11-08",
+      "completed": 1
+    },
+    {
+      "date": "2026-11-09",
+      "completed": 2
+    }
+  ],
+  "refresh": {
+    "interval_seconds": 300,
+    "day_ends_in_seconds": 34080
   }
- ],
- "offices": {
-  "morning": {
-   "done": true,
-   "completed_at": "2026-11-09T07:12:00-03:00"
-  },
-  "midday": {
-   "done": true,
-   "completed_at": "2026-11-09T12:20:00-03:00"
-  },
-  "evening": {
-   "done": false,
-   "completed_at": null
-  },
-  "compline": {
-   "done": false,
-   "completed_at": null
-  },
-  "completed_today": [
-   "midday",
-   "morning"
-  ]
- },
- "streak": {
-  "current": 12,
-  "longest": 40
- },
- "refresh": {
-  "interval_seconds": 300,
-  "day_ends_in_seconds": 34080
- }
 }

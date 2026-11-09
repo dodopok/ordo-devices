@@ -10,7 +10,8 @@ lá na API.
 
 | Pasta | O quê | Estado |
 | --- | --- | --- |
-| [`compass/`](compass/) | Firmware da bússola para a Waveshare ESP32-S3-Touch-AMOLED-1.75 (e 1.75C) | 0.3: chaveiro. A 0.2 roda na 1.75C; a 0.3 (animações, menu novo) compila e passa no simulador, ainda não gravada |
+| [`compass/`](compass/) | Firmware da bússola para a Waveshare ESP32-S3-Touch-AMOLED-1.75 (e 1.75C) | 0.4: chaveiro. A 0.2 roda na 1.75C; a 0.3 (animações, menu novo) e a 0.4 (comemoração com foto, atualização pelo Wi-Fi) compilam e passam no simulador, ainda não gravadas |
+| [`site/`](site/) | bussola.oficio.app, na Vercel: o firmware para atualização pelo Wi-Fi e a função que entrega a foto e o texto da comemoração a partir do CMS | escrito e testado contra o CMS; ainda não publicado |
 | [`miblo/`](miblo/) | App de página para o Miblo Desk, publicado na Loja de Apps do Desk | fase 4, primeira versão |
 
 ## A bússola
@@ -77,9 +78,10 @@ para a esquerda avança, para baixo ou para a direita volta, e depois da
 | Tela | O que mostra |
 | --- | --- |
 | Agora | hora, data, tempo litúrgico, nome do dia e o ofício que a hora pede |
-| Bússola | o anel do ano com as festas, a data e os quatro ofícios |
+| Comemoração | só nos dias que têm uma: a foto enchendo o vidro, com o nome, o epíteto e o ano. Um toque sobe as palavras (um resumo) e mostra "Ler tudo", que abre o texto inteiro |
+| Bússola | o anel do ano com as festas, a data, os quatro ofícios e quantos dias faltam para o próximo tempo |
 | Leituras | as leituras do dia, por referência |
-| Ofícios | os quatro ofícios e a sequência de dias |
+| Ofícios | os quatro ofícios, a sequência de dias e os últimos sete dias (um ponto por dia, mais cheio quanto mais ofícios) |
 | Semana | os próximos seis dias e a contagem para a próxima festa |
 | Mais | quatro blocos: Contas, Silêncio, Lanterna e Ajustes, cada um dizendo como está ("12 de 33", "ainda 14 min") |
 
@@ -121,9 +123,39 @@ Em Mais › Ajustes, direto na bússola:
 | --- | --- |
 | Tela | apaga em 10, 15, 30 ou 60 segundos; brilho baixo, médio ou alto; escurecer à noite; tela inicial (Agora, Bússola, Leituras, Ofícios ou Semana); animações; toque acorda; acesa na tomada |
 | Som | ligado ou não; volume; sino às 6h, 12h e 18h |
-| Lembretes | um horário para cada ofício; toca só se o ofício ainda não foi orado |
+| Lembretes | horários "do app" (os que você marcou no Ordo, quando há algum) ou "daqui" (um horário para cada ofício, ajustado na bússola); toca só se o ofício ainda não foi orado |
 | Rede | redes Wi-Fi guardadas (até cinco) e adicionar outra; sincronizar a cada 2, 4, 6 ou 12 horas, ou só ao acordar; sincronizar agora |
-| Aparelho | sobre (versão, bateria, última sincronização, quantas vezes acordou); desligar; desvincular; apagar tudo |
+| Aparelho | atualização (procurar e instalar um firmware novo); sobre (versão, bateria, última sincronização, quantas vezes acordou); desligar; desvincular; apagar tudo |
+
+### A comemoração do dia
+
+Nos dias com comemoração a API manda o nome, o epíteto e o ano ("Monge e
+Bispo, 397") e dois caminhos assinados para a foto e o texto. A foto e o
+texto **moram no CMS do Ordo** e não passam pela API: a bússola os busca em
+`bussola.oficio.app` (ver [`site/`](site/)), que lê o CMS e devolve a imagem
+já recortada para o vidro (466 px, 20 a 65 KB) e o texto já limpo.
+
+- Busca na mesma hora em que sincroniza, hoje primeiro e depois os sete dias
+  seguintes, e guarda no LittleFS: sem rede, a foto do dia já está lá.
+- No máximo seis arquivos por sincronização na bateria; o resto vem nas
+  próximas. Na prática entra uma foto nova por dia.
+- Sem foto no CMS (ou com uma pequena demais), a página aparece só em texto.
+- Em dia de jejum ou abstinência, a tela Agora diz qual, sob o nome do dia.
+
+### Atualização pelo Wi-Fi
+
+Em Ajustes › Atualização. A bússola procura versão nova uma vez por dia,
+quando sincroniza com a tela acesa, e quando você toca em "Procurar agora".
+Havendo uma, mostra o número e o que mudou; **só instala se você mandar**,
+com a bateria acima de 40% ou no cabo.
+
+- O firmware novo é gravado na outra metade da memória. O que está rodando
+  continua inteiro até o novo provar que liga: se ele não chegar a acender a
+  tela, o próximo reinício volta ao anterior sozinho.
+- O arquivo só é aceito se o SHA-256 conferir com o manifesto e, se o
+  firmware foi compilado com uma chave pública, se a assinatura conferir.
+- Como publicar uma versão e como passar a assiná-las:
+  [`site/README.md`](site/README.md).
 
 ### Bateria
 
@@ -169,6 +201,8 @@ foi gravada num aparelho.
 | Wi-Fi apagado com o ponto vermelho | O dia na tela não é confirmado pela API há mais de 12 horas | Leve-a para perto de uma rede conhecida, ou adicione uma em Ajustes › Wi-Fi |
 | Wi-Fi apagado, ponto cinza | Nenhuma rede guardada, ou a última tentativa não achou nenhuma | Ajustes › Wi-Fi |
 | Data em vez de hora | Ainda não sincronizou desde que foi ligada | Sincronize: Ajustes › Sincronizar agora |
+| Comemoração sem foto | O CMS não tem imagem para ela, a imagem é pequena demais, a foto ainda não foi baixada, ou a API está sem `DEVICE_CONTENT_SECRET` | Espere a próxima sincronização; se continuar, veja `site/README.md` |
+| "Não atualizou: o arquivo não conferiu" | O firmware baixado não bate com o manifesto, ou não está assinado e este firmware exige assinatura | Nada foi mudado na bússola. Publique a versão de novo com `tools/release.py build` |
 | Não acorda | Bateria no fim, ou desligada pelo PWR | Ligue no cabo; aperte PWR |
 
 ### Configuração em tempo de compilação
@@ -199,8 +233,13 @@ pio pkg install -e amoled175c   # uma vez: baixa o LVGL e o ArduinoJson
 make -C sim shots               # PNGs em sim/out/
 make -C sim movie               # sim/out/ordo.gif: um passeio pelas telas, com as transições
 make -C sim check               # toca em todos os controles com verificação de memória
-make -C sim test                # relógio, agenda de acordar, lembretes e o dia sem rede
+make -C sim test                # relógio, agenda de acordar, lembretes, o dia sem rede, o texto e a foto da comemoração, o manifesto
 ```
+
+A página da comemoração precisa de uma foto. As de verdade são do CMS, então
+o simulador pinta uma de mentira (`sim/make_art.py`) e a passa pelo mesmo
+decodificador de JPEG da placa. Para ver as reais, aponte `ORDO_SIM_CONTENT`
+para uma pasta com `<slug>.jpg` e `<slug>.pt-BR.json` vindos do site.
 
 As fontes (Raleway e Newsreader, as do app, com acentos) são geradas por
 `compass/tools/make_fonts.sh`.
@@ -215,6 +254,7 @@ compass/
 │   ├── board_pins.h        pinos por placa
 │   └── lv_conf.h           configuração do LVGL 9
 ├── tools/make_fonts.sh     gera src/ui/fonts
+├── tools/release.py        publica um firmware em site/firmware (e cria a chave de assinatura)
 ├── sim/                    simulador das telas
 └── src/
     ├── main.cpp
@@ -224,8 +264,12 @@ compass/
     ├── board/              tela (CO5300), toque (CST9217), energia e sono (AXP2101), sino (ES8311)
     ├── sys/                relógio emprestado da API; estado que sobrevive ao sono
     ├── net/                Wi-Fi com várias redes, página de configuração, cliente da API, raízes TLS
+    ├── net/site.*, ota.*   bussola.oficio.app: foto e texto da comemoração, e o firmware novo
+    ├── content/art.*       a foto da comemoração, de JPEG para pixels
     ├── model/today.*       o payload de /device/today, e o dia visto de outra data
+    ├── model/content.*     o texto da comemoração, o manifesto do firmware, versões
     ├── store/settings.*    NVS: token, ajustes, redes, último payload
+    ├── store/content.*     LittleFS: fotos e textos das comemorações
     └── ui/                 as telas, as fontes e o tema
 ```
 

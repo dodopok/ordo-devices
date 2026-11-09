@@ -17,3 +17,7 @@ compass/sim/build/
 compass/sim/build-asan/
 compass/sim/out/
 compass/tools/.fontwork/
+
+# The stand-in picture the simulator paints for itself, and real ones dropped beside it
+compass/sim/content/*.jpg
+site/node_modules/

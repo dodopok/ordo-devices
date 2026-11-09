@@ -9,7 +9,11 @@
 #include <sstream>
 #include <string>
 
+#include <vector>
+
 #include "app/schedule.h"
+#include "content/art.h"
+#include "model/content.h"
 #include "model/today.h"
 #include "sys/clock.h"
 #include "sys/rtc_state.h"
@@ -265,13 +269,141 @@ void testModel(const char* path) {
   CHECK(next.name == "Cristo Rei");
   CHECK_EQ(next.inDays, 13);
 
+  // ---- what the 0.4 payload adds
+  // Who the day remembers, and where its picture and text are to be had.
+  CHECK(!today.day.celebration.present());
+  const model::Celebration& martin = wed.day.celebration;
+  CHECK(martin.present());
+  CHECK(martin.epithet == "Monge e Bispo");
+  CHECK(martin.year == "397");
+  CHECK(martin.byline() == "Monge e Bispo, 397");
+  CHECK(martin.slug == "celebration-martin-of-tours");
+  CHECK(martin.artPath.startsWith("/c/celebration-martin-of-tours.jpg?t="));
+  CHECK(martin.textPath.startsWith("/c/celebration-martin-of-tours.pt-BR.json?t="));
+  // The fast, in the short form.
+  CHECK(today.day.observance.isEmpty());
+  CHECK(model::viewFor(today, today.day.days + 4).day.observance == "Devoção e conversão");
+  // The season in whole days, and how it moves when the day turns offline.
+  CHECK(today.season.known);
+  CHECK_EQ(today.season.day, 169);
+  CHECK_EQ(today.season.days, 188);
+  CHECK(today.season.nextName == "Advento");
+  CHECK_EQ(today.season.nextInDays, 20);
+  CHECK_EQ(wed.season.day, 171);
+  CHECK_EQ(wed.season.nextInDays, 18);
+  CHECK(!model::viewFor(today, today.day.days + 25).season.known);  // Advent by then
+  // The app's reminders.
+  CHECK(today.hasReminders);
+  CHECK_EQ(today.reminders[0], 7 * 60);
+  CHECK_EQ(today.reminders[1], -1);
+  CHECK_EQ(today.reminders[2], 18 * 60);
+  // The week: oldest first, today last; it slides when the day turns.
+  CHECK(today.hasWeek);
+  CHECK_EQ(today.week[0], 4);
+  CHECK_EQ(today.week[6], 2);
+  CHECK_EQ(wed.week[4], 2);   // Monday is now two days back
+  CHECK_EQ(wed.week[5], -1);  // nobody has said what was prayed on Tuesday
+  CHECK(!model::viewFor(today, today.day.days + 8).hasWeek);
+
+  // Only signed paths on the content host are kept; anything else is dropped.
+  model::Today odd;
+  const char* oddDay =
+      "{\"date\":\"2026-11-09\",\"day\":{\"celebration\":{\"name\":\"X\",\"slug\":\"celebration-x\",\"content\":{"
+      "\"art\":\"https://elsewhere.example/c/celebration-x.jpg\",\"text\":\"/c/../firmware/manifest.json\"}}}}";
+  CHECK(model::parseToday(oddDay, odd));
+  CHECK(odd.day.celebration.present());
+  CHECK(odd.day.celebration.artPath.isEmpty());
+  CHECK(odd.day.celebration.textPath.isEmpty());
+
   // A payload from an API that predates the new fields still parses.
   model::Today old;
   CHECK(model::parseToday("{\"date\":\"2026-11-09\",\"language\":\"pt-BR\",\"day\":{\"title\":\"Dia\",\"celebration\":null}}", old));
   CHECK(!old.hasUtcOffset);
   CHECK(old.upcoming.empty());
+  CHECK(!old.season.known && !old.hasReminders && !old.hasWeek && old.day.observance.isEmpty());
   CHECK(!model::parseToday("", old));
   CHECK(!model::parseToday("{not json", old));
+}
+
+std::string slurp(const std::string& path) {
+  std::ifstream in(path, std::ios::binary);
+  std::stringstream buffer;
+  buffer << in.rdbuf();
+  return buffer.str();
+}
+
+void testContent() {
+  // The text the content host sends.
+  const std::string json = slurp("content/celebration-martin-of-tours.pt-BR.json");
+  model::CelebrationText text;
+  CHECK(model::parseCelebrationText(json.c_str(), json.size(), text));
+  CHECK(text.found && text.more);
+  CHECK(text.summary.startsWith("Soldado romano"));
+  CHECK(text.body.size() == 8);
+  CHECK(text.body[0].heading && text.body[0].text == "O soldado e a capa");
+  CHECK(!text.body[1].heading);
+  CHECK(!model::parseCelebrationText("{\"v\":2,\"summary\":\"x\"}", 21, text));
+  CHECK(!model::parseCelebrationText("<html>not found</html>", 22, text));
+  CHECK(!text.found);
+
+  // File names for the store: stable, sixteen hex digits, different per slug.
+  const String key = model::contentKey("celebration-martin-of-tours");
+  CHECK_EQ(key.length(), 16);
+  CHECK(key == model::contentKey("celebration-martin-of-tours"));
+  CHECK(key != model::contentKey("celebration-martin-of-tour"));
+
+  // The picture, through the decoder the board uses.
+  const std::string jpeg = slurp("content/celebration-martin-of-tours.jpg");
+  CHECK(jpeg.size() > 1000);
+  std::vector<uint16_t> pixels(static_cast<size_t>(content::kArtSide) * content::kArtSide, 0xFFFF);
+  CHECK(content::decodeArt(reinterpret_cast<const uint8_t*>(jpeg.data()), jpeg.size(), pixels.data()));
+  // Right down to the last row and column, which no whole MCU covers.
+  size_t lit = 0;
+  for (uint16_t p : pixels) lit += p != 0;
+  CHECK(lit > pixels.size() * 9 / 10);
+  CHECK(pixels[pixels.size() - 1] != 0);
+  // A cut-off file and a file of another size are refused, and leave black.
+  CHECK(!content::decodeArt(reinterpret_cast<const uint8_t*>(jpeg.data()), 40, pixels.data()));
+  CHECK(!content::decodeArt(reinterpret_cast<const uint8_t*>(jpeg.data()), jpeg.size(), pixels.data(), 240));
+  CHECK_EQ(pixels[0], 0);
+
+  // Versions.
+  CHECK(model::versionNewer("0.4.1", "0.4.0"));
+  CHECK(model::versionNewer("0.10.0", "0.9.9"));
+  CHECK(model::versionNewer("1.0.0", "0.99.99"));
+  CHECK(!model::versionNewer("0.4.0", "0.4.0"));
+  CHECK(!model::versionNewer("0.3.9", "0.4.0"));
+  CHECK(!model::versionNewer("0.4.1-beta", "0.4.0"));
+  CHECK(!model::versionNewer("", "0.4.0"));
+  CHECK(!model::versionNewer("latest", "0.4.0"));
+
+  // The firmware manifest: the build for this board, and nothing odd.
+  const std::string hash(64, 'a');
+  auto manifest = [&](const std::string& path, const std::string& size, const std::string& sha) {
+    return std::string("{\"v\":1,\"version\":\"0.4.1\",\"notes\":{\"pt\":\"Mais rápido.\",\"en\":\"Faster.\"},\"boards\":{\"amoled175c\":{\"path\":\"") +
+           path + "\",\"size\":" + size + ",\"sha256\":\"" + sha + "\",\"sig\":\"\"}}}";
+  };
+  model::FirmwareOffer offer;
+  const std::string good = manifest("/firmware/0.4.1/amoled175c.bin", "1900000", hash);
+  CHECK(model::parseManifest(good.c_str(), good.size(), "amoled175c", "pt-BR", offer));
+  CHECK(offer.found && offer.version == "0.4.1" && offer.size == 1900000 && offer.notes == "Mais rápido.");
+  CHECK(model::parseManifest(good.c_str(), good.size(), "amoled175c", "en-US", offer) && offer.notes == "Faster.");
+  CHECK(model::parseManifest(good.c_str(), good.size(), "amoled175c", "es", offer) && offer.notes == "Mais rápido.");
+  CHECK(!model::parseManifest(good.c_str(), good.size(), "amoled175", "pt-BR", offer));  // nothing for that board
+  for (const std::string& bad : {
+           manifest("/c/x.bin", "1900000", hash),                               // not the firmware folder
+           manifest("/firmware/../c/x.bin", "1900000", hash),
+           manifest("https://elsewhere.example/firmware/x.bin", "1900000", hash),
+           manifest("/firmware/0.4.1/amoled175c.elf", "1900000", hash),
+           manifest("/firmware/0.4.1/amoled175c.bin", "1000", hash),            // not the size of a firmware
+           manifest("/firmware/0.4.1/amoled175c.bin", "99000000", hash),
+           manifest("/firmware/0.4.1/amoled175c.bin", "1900000", "abc"),        // not a hash
+           manifest("/firmware/0.4.1/amoled175c.bin", "1900000", std::string(64, 'Z')),
+       }) {
+    CHECK(!model::parseManifest(bad.c_str(), bad.size(), "amoled175c", "pt-BR", offer));
+    CHECK(!offer.found);
+  }
+  CHECK(!model::parseManifest("{\"v\":2}", 7, "amoled175c", "pt-BR", offer));
 }
 
 }  // namespace
@@ -290,6 +422,7 @@ int main(int argc, char** argv) {
   testDue();
   testSchedule();
   testModel(argc > 1 ? argv[1] : "sample_today.json");
+  testContent();
   if (failures) {
     printf("%d check(s) failed\n", failures);
     return 1;

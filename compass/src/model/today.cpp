@@ -32,12 +32,45 @@ void readList(JsonArrayConst array, std::vector<Reading>& out) {
   }
 }
 
+// A path on the content host, as the API signs them. Anything else (another
+// host, another folder) is dropped here: the device asks that host for these
+// paths and nothing more.
+String contentPath(JsonVariantConst v) {
+  const String path = str(v);
+  if (!path.startsWith("/c/") || path.length() > 200) return String();
+  for (size_t i = 0; i < path.length(); i++) {
+    const char c = path[i];
+    const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '/' || c == '-' ||
+                    c == '.' || c == '_' || c == '?' || c == '=' || c == '&';
+    if (!ok) return String();
+  }
+  if (path.indexOf("..") >= 0 || path.indexOf("//") >= 0) return String();
+  return path;
+}
+
+void readCelebration(JsonObjectConst item, Celebration& out) {
+  out = Celebration();
+  if (item.isNull()) return;
+  out.name = str(item["name"]);
+  out.type = str(item["type"]);
+  out.epithet = str(item["epithet"]);
+  out.year = str(item["year"]);
+  out.slug = str(item["slug"]);
+  if (out.slug.isEmpty()) return;
+  out.artPath = contentPath(item["content"]["art"]);
+  out.textPath = contentPath(item["content"]["text"]);
+}
+
 void readDay(JsonObjectConst day, JsonObjectConst readings, DayInfo& out) {
   out.weekday = str(day["weekday"]);
-  // `celebration` is null or { name, type }: a feast or a commemoration names
-  // the day; otherwise the week does ("Próprio 27").
-  const String celebration = str(day["celebration"]["name"]);
-  out.title = celebration.isEmpty() ? str(day["title"]) : celebration;
+  // `celebration` is null or an object: a feast or a commemoration names the
+  // day; otherwise the week does ("Próprio 27").
+  readCelebration(day["celebration"], out.celebration);
+  out.title = out.celebration.present() ? out.celebration.name : str(day["title"]);
+  // The short form fits under a day's name ("Jejum"); the full label is the
+  // book's own sentence and can be a long one.
+  out.observance = str(day["observance"]["short"]);
+  if (out.observance.isEmpty()) out.observance = str(day["observance"]["label"]);
   out.season = str(day["season"]);
   out.color = colorFromHex(day["color_hex"] | "", &out.hasColor);
   out.isSunday = day["is_sunday"] | false;
@@ -189,6 +222,40 @@ bool parseToday(const char* json, Today& out) {
   }
   today.officesKnown = true;
 
+  JsonObjectConst season = doc["season_progress"];
+  if (!season.isNull()) {
+    today.season.day = season["day"] | 0;
+    today.season.days = season["days"] | 0;
+    today.season.endsDays = daysFromIsoDate(season["ends_on"] | "");
+    today.season.nextName = str(season["next"]["name"]);
+    today.season.nextInDays = season["next"]["in_days"] | 0;
+    today.season.known = today.season.day > 0 && today.season.days >= today.season.day;
+  }
+
+  for (JsonObjectConst item : doc["reminders"].as<JsonArrayConst>()) {
+    const char* office = item["office"] | "";
+    const char* time = item["time"] | "";
+    int hour = -1, minute = -1;
+    if (sscanf(time, "%2d:%2d", &hour, &minute) != 2 || hour < 0 || hour > 23 || minute < 0 || minute > 59) continue;
+    for (int i = 0; i < 4; i++) {
+      if (strcmp(office, kOfficeKeys[i]) != 0) continue;
+      today.reminders[i] = static_cast<int16_t>(hour * 60 + minute);
+      today.hasReminders = true;
+    }
+  }
+
+  // Seven entries ending today; anything else is placed by its date.
+  for (JsonObjectConst item : doc["week"].as<JsonArrayConst>()) {
+    const long days = daysFromIsoDate(item["date"] | "");
+    const long back = today.day.days - days;
+    if (days < 0 || back < 0 || back > 6) continue;
+    int completed = item["completed"] | 0;
+    if (completed < 0) completed = 0;
+    if (completed > 4) completed = 4;
+    today.week[6 - back] = static_cast<int8_t>(completed);
+    today.hasWeek = true;
+  }
+
   today.streakCurrent = doc["streak"]["current"] | 0;
   today.streakLongest = doc["streak"]["longest"] | 0;
   today.refreshIntervalSeconds = doc["refresh"]["interval_seconds"] | 300;
@@ -208,6 +275,23 @@ Today viewFor(const Today& base, long days) {
   view.officesKnown = false;
   view.completedToday = 0;
   for (auto& office : view.offices) office.done = false;
+
+  // The week slides with the day: what was today is now some days back, and
+  // nobody has said yet what was prayed since.
+  const long ahead = days - base.day.days;
+  for (int i = 0; i < 7; i++) {
+    const long from = i + ahead;
+    view.week[i] = from <= 6 ? base.week[from] : static_cast<int8_t>(-1);
+  }
+  view.hasWeek = base.hasWeek && ahead < 7;
+
+  // So does the place in the season, while the season lasts.
+  if (base.season.known && days <= base.season.endsDays) {
+    view.season.day = base.season.day + static_cast<int>(ahead);
+    view.season.nextInDays = base.season.nextInDays - static_cast<int>(ahead);
+  } else {
+    view.season = SeasonProgress();
+  }
   const long span = (base.ringFrom >= 0 && base.ringTo >= base.ringFrom) ? (base.ringTo - base.ringFrom + 1) : 0;
   view.progress = fractionOf(days, base.ringFrom, span);
 

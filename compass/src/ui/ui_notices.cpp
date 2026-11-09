@@ -236,6 +236,31 @@ void showLowBattery() {
   present(scr);
 }
 
+void showUpdating(const String& version, int percent) {
+  static lv_obj_t* arc = nullptr;
+  static lv_obj_t* figure = nullptr;
+  // Built once; after that only the arc and the figure move.
+  if (S.mode != Mode::Notice || lv_screen_active() != S.notice || !arc || noticeCountdown != figure) {
+    lv_obj_t* scr = begin(false);
+    ringArc(scr, 440, 6, 0.0f, 1.0f, theme::track());
+    arc = ringArc(scr, 440, 6, 0.0f, 0.001f, theme::gold());
+    text(scr, tr("ATUALIZANDO", "UPDATING", "ACTUALIZANDO"), theme::tiny(), theme::dim(), 132, 3, 260);
+    figure = text(scr, "0%", theme::display(), theme::fg(), 172, 0, 260);
+    char buf[48];
+    snprintf(buf, sizeof(buf), "v%s", version.c_str());
+    text(scr, buf, theme::label(), theme::gold(), 236, 0, 260);
+    text(scr, tr("não desligue; ela reinicia sozinha", "do not switch it off; it restarts by itself",
+                 "no la apague; se reinicia sola"),
+         theme::italic(), theme::dim(), 286, 0, 260);
+    noticeCountdown = figure;
+    present(scr);
+  }
+  if (percent < 0) percent = 0;
+  if (percent > 100) percent = 100;
+  lv_arc_set_bg_end_angle(arc, static_cast<float>(percent) * 3.6f);
+  lv_label_set_text_fmt(figure, "%d%%", percent);
+}
+
 void dismissNotice() {
   if (S.dayShown) showPage(S.page);
 }
