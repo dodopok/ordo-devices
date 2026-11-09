@@ -11,7 +11,7 @@ lá na API.
 | Pasta | O quê | Estado |
 | --- | --- | --- |
 | [`compass/`](compass/) | Firmware da bússola para a Waveshare ESP32-S3-Touch-AMOLED-1.75 (e 1.75C) | fase 3, primeira versão |
-| `miblo/` | App de página para o Miblo Hub | fase 4, ainda não começou |
+| [`miblo/`](miblo/) | App de página para o Miblo Desk, publicado na Loja de Apps do Desk | fase 4, primeira versão |
 
 ## A bússola
 
@@ -125,6 +125,14 @@ compass/
     ├── store/settings.*    NVS: token, ETag, último payload
     └── ui/                 bússola, leituras, ofícios, vínculo e avisos
 ```
+
+## O app do Miblo Desk
+
+A mesma face, na tela de 240×240 do Miblo Desk: o anel do ano, o dia na cor
+do tempo, os quatro ofícios e, alternando, as leituras. Vincula-se com um
+código como a bússola, guarda o token no armazenamento selado do Miblo Hub e
+só lê. Lembretes opcionais da Oração da Manhã e da Tarde. Detalhes, como
+desenvolver e publicar: [`miblo/README.md`](miblo/README.md).
 
 ## Licença
 

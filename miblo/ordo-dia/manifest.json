@@ -1,0 +1,104 @@
+{
+  "id": "ordo-dia",
+  "api": 6,
+  "display": "page",
+  "page": "page.html",
+  "version": "0.1.0",
+  "name": {
+    "pt": "Ordo",
+    "en": "Ordo"
+  },
+  "category": "daily",
+  "promise": {
+    "pt": "O dia litúrgico na mesa: cor do tempo, festa, leituras e os ofícios que você já rezou hoje.",
+    "en": "The liturgical day on your desk: season colour, feast, readings and the offices you prayed today."
+  },
+  "settings": [
+    {
+      "key": "leituras",
+      "label": {
+        "pt": "Alternar com as leituras do dia",
+        "en": "Alternate with the day's readings"
+      },
+      "type": "toggle",
+      "default": true
+    },
+    {
+      "key": "manha",
+      "label": {
+        "pt": "Lembrar da Oração da Manhã às",
+        "en": "Morning Prayer reminder at"
+      },
+      "type": "time",
+      "placeholder": {
+        "pt": "07:00 (vazio: sem lembrete)",
+        "en": "07:00 (empty: no reminder)"
+      }
+    },
+    {
+      "key": "tarde",
+      "label": {
+        "pt": "Lembrar da Oração da Tarde às",
+        "en": "Evening Prayer reminder at"
+      },
+      "type": "time",
+      "placeholder": {
+        "pt": "18:00 (vazio: sem lembrete)",
+        "en": "18:00 (empty: no reminder)"
+      }
+    }
+  ],
+  "alerts": [
+    {
+      "id": "manha",
+      "label": {
+        "pt": "Oração da Manhã",
+        "en": "Morning Prayer"
+      },
+      "level": "info"
+    },
+    {
+      "id": "tarde",
+      "label": {
+        "pt": "Oração da Tarde",
+        "en": "Evening Prayer"
+      },
+      "level": "info"
+    }
+  ],
+  "network": [
+    "api.caminhoanglicano.com.br",
+    "api.oficio.app"
+  ],
+  "intervalMs": 5000,
+  "preview": {
+    "v": 1,
+    "title": "Ordo",
+    "icon": "sun",
+    "items": [
+      {
+        "t": "big",
+        "value": "Advento",
+        "label": "Segundo Domingo",
+        "color": "white"
+      },
+      {
+        "t": "text",
+        "value": "Sl 72, Is 11.1-10, Rm 15.4-13",
+        "color": "white"
+      },
+      {
+        "t": "text",
+        "value": "Manha rezada, faltam 3",
+        "color": "green"
+      }
+    ]
+  },
+  "changelog": [
+    {
+      "version": "0.1.0",
+      "pt": "Primeira versão: vínculo com a conta do Ordo por código, o dia litúrgico na cor do tempo com o anel do ano, as leituras e os quatro ofícios do dia; lembretes opcionais da Oração da Manhã e da Tarde.",
+      "en": "First version: link to an Ordo account with a code, the liturgical day in the season's colour with the year ring, the readings and the four daily offices; optional Morning and Evening Prayer reminders."
+    }
+  ]
+}

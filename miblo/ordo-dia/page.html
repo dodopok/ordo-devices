@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=240, height=240, initial-scale=1">
+<title>Ordo</title>
+<style>
+  /* Inter Tight (SIL OFL 1.1, fonts/OFL.md), latin subset, inside the app: the page has no network. */
+  @font-face { font-family: 'Inter Tight'; src: url('fonts/InterTight-latin.woff2') format('woff2'); font-weight: 100 900; font-display: block; }
+
+  /* The same face as the compass: black background (an OLED's rest), the year ring around the
+     edge in the colours of the seasons, the day in the middle, the four offices below it. */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 240px; height: 240px; overflow: hidden; background: #0b0c12; }
+  body { position: relative; font-family: 'Inter Tight', system-ui, sans-serif; color: #f3f1ec;
+    -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums; }
+  canvas { position: absolute; left: 0; top: 0; width: 240px; height: 240px; }
+
+  .view { position: absolute; inset: 0; opacity: 0; transition: opacity 0.45s ease; pointer-events: none; }
+  .view.on { opacity: 1; }
+  .t { position: absolute; left: 0; right: 0; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* The day. */
+  #date { top: 40px; padding: 0 44px; font-size: 10.5px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: #9ba1ae; }
+  #title { top: 60px; padding: 0 34px; font-size: 17px; font-weight: 600; line-height: 1.16; letter-spacing: -0.01em;
+    white-space: normal; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; max-height: 60px; }
+  #title.small { font-size: 15px; }
+  #subtitle { top: 118px; padding: 0 40px; font-size: 10.5px; color: #9ba1ae; }
+  #season { top: 135px; padding: 0 40px; font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; }
+  #streak { top: 153px; padding: 0 40px; font-size: 10.5px; color: #8a909c; }
+
+  #offices { position: absolute; left: 38px; right: 38px; top: 164px; display: flex; justify-content: space-between; }
+  .office { width: 41px; text-align: center; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; margin: 0 auto 5px; border: 1.5px solid var(--c, #ddd); background: transparent;
+    transition: background 0.4s ease, border-color 0.4s ease; }
+  .office.done .dot { background: var(--c, #ddd); }
+  .office.next .dot { animation: pulse 2.6s ease-in-out infinite; }
+  .office span { display: block; font-size: 8.5px; letter-spacing: 0.02em; color: #8a909c; white-space: nowrap; }
+  .office.done span { color: #c9ccd3; }
+  @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0); transform: scale(1); }
+    50% { box-shadow: 0 0 0 4px var(--glow, rgba(255, 255, 255, 0.18)); transform: scale(1.08); } }
+
+  #foot { top: 198px; padding: 0 48px; font-size: 9.5px; color: #6f7582; }
+  #foot.gold { color: #e8c968; }
+
+  /* The readings. */
+  #rtitle { top: 44px; padding: 0 40px; font-size: 10.5px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: #9ba1ae; }
+  #rlist { position: absolute; left: 30px; right: 30px; top: 66px; bottom: 44px; display: flex; flex-direction: column; justify-content: center; gap: 5px; }
+  .r { text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; line-height: 1.2; }
+  .r b { font-weight: 500; color: #9ba1ae; font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; margin-right: 6px; }
+  .r.h { font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase; color: #6f7582; margin-top: 3px; }
+
+  /* The link code, and the notices. */
+  #ltitle { top: 48px; padding: 0 40px; font-size: 14px; font-weight: 600; }
+  #code { top: 78px; padding: 0 20px; font-size: 34px; font-weight: 300; letter-spacing: 0.1em; line-height: 1; color: #fff; }
+  #where { top: 128px; padding: 0 34px; font-size: 10.5px; line-height: 1.3; color: #c9ccd3; white-space: normal; }
+  #plus { top: 162px; padding: 0 40px; font-size: 10px; color: #8a909c; }
+  #valid { top: 190px; padding: 0 40px; font-size: 9.5px; color: #6f7582; }
+  #ntitle { top: 92px; padding: 0 36px; font-size: 15px; font-weight: 600; white-space: normal; line-height: 1.2; }
+  #nhint { top: 134px; padding: 0 36px; font-size: 10.5px; line-height: 1.3; color: #9ba1ae; white-space: normal; }
+</style>
+</head>
+<body>
+<canvas id="ring" width="240" height="240"></canvas>
+
+<div class="view" id="day">
+  <div class="t" id="date"></div>
+  <div class="t" id="title"></div>
+  <div class="t" id="subtitle"></div>
+  <div class="t" id="season"></div>
+  <div class="t" id="streak"></div>
+  <div id="offices"></div>
+  <div class="t" id="foot"></div>
+</div>
+
+<div class="view" id="readings">
+  <div class="t" id="rtitle"></div>
+  <div id="rlist"></div>
+</div>
+
+<div class="view" id="link">
+  <div class="t" id="ltitle"></div>
+  <div class="t" id="code"></div>
+  <div class="t" id="where"></div>
+  <div class="t" id="plus"></div>
+  <div class="t" id="valid"></div>
+</div>
+
+<div class="view" id="notice">
+  <div class="t" id="ntitle"></div>
+  <div class="t" id="nhint"></div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const HUB_LANG = window.miblo?.lang === 'en' ? 'en' : 'pt';
+
+const T = {
+  pt: {
+    locale: 'pt-BR',
+    offices: ['Manhã', 'Meio-dia', 'Tarde', 'Completas'],
+    allDone: 'Os quatro ofícios rezados', streak: (n) => `${n} dias seguidos`,
+    readings: 'Leituras de hoje', morning: 'Manhã', evening: 'Tarde',
+    slots: { psalm: 'Salmo', psalm_alternative: 'Salmo alt.', first_reading: '1ª leitura', second_reading: '2ª leitura', gospel: 'Evangelho' },
+    link: 'Vincule ao Ordo', where: 'No Ordo: Configurações › Aparelhos › Vincular com código', plus: 'Precisa do Ordo+',
+    valid: (m) => `o código vale por ${m} min`, asking: 'pedindo um código…',
+    premium: 'Assinatura Ordo+ vencida', premiumHint: 'renove no app e esta tela volta sozinha',
+    disabled: 'Aparelho desativado', disabledHint: 'este app foi desativado na API do Ordo',
+    waiting: 'Buscando o dia de hoje…', noApi: 'Sem resposta da API', noApiHint: 'mostrando quando conseguir',
+    offline: (hm) => `sem internet desde ${hm}`,
+  },
+  en: {
+    locale: 'en-US',
+    offices: ['Morning', 'Midday', 'Evening', 'Compline'],
+    allDone: 'All four offices prayed', streak: (n) => `${n} days in a row`,
+    readings: "Today's readings", morning: 'Morning', evening: 'Evening',
+    slots: { psalm: 'Psalm', psalm_alternative: 'Psalm alt.', first_reading: '1st reading', second_reading: '2nd reading', gospel: 'Gospel' },
+    link: 'Link to Ordo', where: 'In Ordo: Settings › Devices › Link with a code', plus: 'Needs Ordo+',
+    valid: (m) => `the code is good for ${m} min`, asking: 'asking for a code…',
+    premium: 'Ordo+ subscription lapsed', premiumHint: 'renew in the app and this screen comes back by itself',
+    disabled: 'Device disabled', disabledHint: 'this app was disabled on the Ordo API',
+    waiting: 'Fetching today…', noApi: 'No answer from the API', noApiHint: 'showing it as soon as it comes',
+    offline: (hm) => `offline since ${hm}`,
+  },
+  es: {
+    locale: 'es',
+    offices: ['Mañana', 'Mediodía', 'Tarde', 'Completas'],
+    allDone: 'Los cuatro oficios rezados', streak: (n) => `${n} días seguidos`,
+    readings: 'Lecturas de hoy', morning: 'Mañana', evening: 'Tarde',
+    slots: { psalm: 'Salmo', psalm_alternative: 'Salmo alt.', first_reading: '1ª lectura', second_reading: '2ª lectura', gospel: 'Evangelio' },
+    link: 'Vincule al Ordo', where: 'En Ordo: Ajustes › Dispositivos › Vincular con código', plus: 'Requiere Ordo+',
+    valid: (m) => `el código vale ${m} min`, asking: 'pidiendo un código…',
+    premium: 'Suscripción Ordo+ vencida', premiumHint: 'renuévela en la app y esta pantalla vuelve sola',
+    disabled: 'Dispositivo desactivado', disabledHint: 'esta app fue desactivada en la API de Ordo',
+    waiting: 'Buscando el día de hoy…', noApi: 'Sin respuesta de la API', noApiHint: 'se mostrará en cuanto llegue',
+    offline: (hm) => `sin internet desde ${hm}`,
+  },
+};
+const tr = (lang) => T[String(lang ?? '').slice(0, 2)] ?? T[HUB_LANG];
+
+const GOLD = '#e8c968';
+const OFFICES = ['morning', 'midday', 'evening', 'compline'];
+
+// Realistic samples, used only when the page is opened without the Miblo Hub (window.miblo
+// absent): #dia, #completo, #vinculo, #premium, #offline, #esperando. main.js feeds the same shape.
+const RING = {
+  progress: 0.945,
+  segments: [
+    { from: 0.000, to: 0.068, hex: '#A99BD1', season: 'advent' }, { from: 0.068, to: 0.104, hex: '#F2EDE4', season: 'christmas' },
+    { from: 0.104, to: 0.230, hex: '#66BB6A', season: 'epiphany' }, { from: 0.230, to: 0.350, hex: '#A99BD1', season: 'lent' },
+    { from: 0.350, to: 0.362, hex: '#E05A5A', season: 'holy_week' }, { from: 0.362, to: 0.500, hex: '#F2EDE4', season: 'easter' },
+    { from: 0.500, to: 0.512, hex: '#E05A5A', season: 'pentecost' }, { from: 0.512, to: 1.000, hex: '#66BB6A', season: 'ordinary' },
+  ],
+  feasts: [{ at: 0.0, hex: '#A99BD1' }, { at: 0.07, hex: '#F2EDE4' }, { at: 0.103, hex: '#F2EDE4' }, { at: 0.362, hex: '#F2EDE4' }, { at: 0.5, hex: '#E05A5A' }, { at: 0.52, hex: '#F2EDE4' }, { at: 0.98, hex: '#F2EDE4' }],
+};
+const DAY = {
+  mode: 'day', lang: 'pt', date: '2026-11-09', weekday: 'Segunda-feira', title: 'Semana do Próprio 27', subtitle: null,
+  season: 'Tempo Comum', color: 'green', hex: '#66BB6A', isSunday: false, fastDay: false,
+  offices: { morning: true, midday: false, evening: false, compline: false }, next: 'midday', streak: 12,
+  readings: { daily: [{ slot: 'psalm', ref: 'Sl 106.1-18' }, { slot: 'first_reading', ref: 'Jl 1.1-13' }, { slot: 'second_reading', ref: 'Ap 18.1-14' }, { slot: 'gospel', ref: 'Lc 14.12-24' }], morning: [], evening: [] },
+  ring: RING, offline: null,
+};
+const SAMPLES = {
+  dia: DAY,
+  festa: { ...DAY, date: '2026-11-22', weekday: 'Domingo', title: 'Cristo Rei', subtitle: 'Último Domingo depois de Pentecostes', season: 'Tempo Comum', color: 'white', hex: '#F2EDE4', isSunday: true,
+    offices: { morning: true, midday: true, evening: false, compline: false }, next: 'evening', ring: { ...RING, progress: 0.98 } },
+  completo: { ...DAY, offices: { morning: true, midday: true, evening: true, compline: true }, next: null, streak: 13 },
+  offline: { ...DAY, offline: '14:02' },
+  leituras: DAY,
+  vinculo: { mode: 'link', lang: 'pt', code: 'KQ7-MD4', expiresIn: 540, note: null, hint: null },
+  pedindo: { mode: 'link', lang: 'pt', code: null, expiresIn: null, note: null, hint: null },
+  premium: { mode: 'premium', lang: 'pt' },
+  esperando: { mode: 'waiting', lang: 'pt', offline: null },
+};
+
+// ------------------------------------------------------------------ the ring
+
+const DPR = Math.min(2, Math.max(1, Math.round(window.devicePixelRatio || 1)));
+const ring = $('ring');
+ring.width = 240 * DPR;
+ring.height = 240 * DPR;
+const g = ring.getContext('2d');
+const TAU = Math.PI * 2;
+const angle = (f) => -Math.PI / 2 + f * TAU;  // Advent at the top, clockwise
+
+// `d`: the page's data; `gold`: the four offices done (the whole ring lit in gold).
+function drawRing(d, gold) {
+  g.setTransform(DPR, 0, 0, DPR, 0, 0);
+  g.clearRect(0, 0, 240, 240);
+  const cx = 120, cy = 120, r = 112, w = 7;
+  const segs = d?.ring?.segments ?? [];
+  const progress = Number(d?.ring?.progress);
+  if (!segs.length) {
+    // No year ring yet (linking, a notice): a faint full circle so the face keeps its shape.
+    g.beginPath(); g.arc(cx, cy, r, 0, TAU); g.lineWidth = w; g.strokeStyle = 'rgba(255, 255, 255, 0.08)'; g.stroke();
+    return;
+  }
+  const gap = 0.008;  // a hair between seasons
+  for (const s of segs) {
+    const from = Math.max(0, Math.min(1, Number(s.from) || 0));
+    const to = Math.max(from, Math.min(1, Number(s.to) || 0));
+    if (to - from <= 0) continue;
+    const current = Number.isFinite(progress) && progress >= from && progress < to;
+    g.beginPath();
+    g.arc(cx, cy, r, angle(from) + gap / 2, angle(to) - gap / 2);
+    g.lineWidth = w;
+    g.lineCap = 'butt';
+    g.globalAlpha = gold ? 1 : current ? 1 : 0.42;
+    g.strokeStyle = gold ? GOLD : (s.hex || '#ddd');
+    g.stroke();
+  }
+  g.globalAlpha = 1;
+  // The feasts: points on the ring.
+  for (const f of d.ring.feasts ?? []) {
+    const at = Number(f.at);
+    if (!Number.isFinite(at)) continue;
+    const a = angle(Math.max(0, Math.min(1, at)));
+    g.beginPath();
+    g.arc(cx + r * Math.cos(a), cy + r * Math.sin(a), 2.2, 0, TAU);
+    g.fillStyle = gold ? '#fff3c4' : (f.hex || '#fff');
+    g.fill();
+  }
+  // Today: a white marker on the ring, with a soft glow.
+  if (Number.isFinite(progress)) {
+    const a = angle(Math.max(0, Math.min(1, progress)));
+    const x = cx + r * Math.cos(a), y = cy + r * Math.sin(a);
+    g.beginPath(); g.arc(x, y, 8, 0, TAU); g.fillStyle = 'rgba(255, 255, 255, 0.16)'; g.fill();
+    g.beginPath(); g.arc(x, y, 4.2, 0, TAU); g.fillStyle = '#0b0c12'; g.fill();
+    g.beginPath(); g.arc(x, y, 3.2, 0, TAU); g.fillStyle = '#ffffff'; g.fill();
+  }
+}
+
+// ------------------------------------------------------------------- views
+
+let current = null;    // the view on screen
+let data = null;
+let cycle = null;      // the day/readings alternation
+let readingsOn = false;
+
+function show(id) {
+  if (current === id) return;
+  current = id;
+  for (const v of document.querySelectorAll('.view')) v.classList.toggle('on', v.id === id);
+}
+
+function dateLine(d, t) {
+  let day = '';
+  if (typeof d.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d.date)) {
+    const [y, m, dd] = d.date.split('-').map(Number);
+    try {
+      day = new Intl.DateTimeFormat(t.locale, { day: 'numeric', month: 'short' }).format(new Date(Date.UTC(y, m - 1, dd, 12)));
+    } catch { day = `${dd}/${m}`; }
+    day = day.replace(/\.$/, '');
+  }
+  // The weekday as the API names it, cut to its first three letters: the line has to fit the
+  // top of the circle ("SEG · 9 NOV").
+  const wd = typeof d.weekday === 'string' ? Array.from(d.weekday.replace(/[-\s].*$/, '')).slice(0, 3).join('') : '';
+  return [wd, day].filter(Boolean).join(' · ');
+}
+
+function renderDay(d) {
+  const t = tr(d.lang);
+  const done = OFFICES.filter((o) => d.offices?.[o] === true);
+  const gold = done.length === 4;
+  const hex = d.hex || '#ddd';
+  drawRing(d, gold);
+  $('date').textContent = dateLine(d, t);
+  const title = d.title || '';
+  $('title').textContent = title;
+  $('title').classList.toggle('small', title.length > 34);
+  $('subtitle').textContent = d.subtitle || '';
+  $('subtitle').style.display = d.subtitle ? '' : 'none';
+  $('season').textContent = d.season || '';
+  $('season').style.color = hex;
+  $('streak').textContent = d.streak > 1 ? t.streak(d.streak) : '';
+  // The title takes one to three lines; the block (title, subtitle, season, streak) is centred
+  // between the date and the offices.
+  const lines = title.length > 34 ? 3 : title.length > 17 ? 2 : 1;
+  const rows = [['title', lines * 20], ...(d.subtitle ? [['subtitle', 15]] : []), ...(d.season ? [['season', 15]] : []), ...(d.streak > 1 ? [['streak', 15]] : [])];
+  const height = rows.reduce((n, [, h]) => n + h, 0) + (rows.length - 1) * 4;
+  let y = 58 + Math.max(0, (100 - height) / 2);
+  for (const [id, h] of rows) { $(id).style.top = `${Math.round(y)}px`; y += h + 4; }
+  const el = $('offices');
+  el.replaceChildren(...OFFICES.map((o, i) => {
+    const li = document.createElement('div');
+    li.className = `office${d.offices?.[o] ? ' done' : ''}${d.next === o ? ' next' : ''}`;
+    li.style.setProperty('--c', gold ? GOLD : hex);
+    li.style.setProperty('--glow', `${gold ? GOLD : hex}40`);
+    const dot = document.createElement('div'); dot.className = 'dot';
+    const label = document.createElement('span'); label.textContent = t.offices[i];
+    li.append(dot, label);
+    return li;
+  }));
+  const foot = $('foot');
+  foot.className = 't';
+  if (d.offline) foot.textContent = t.offline(d.offline);
+  else if (gold) { foot.textContent = t.allDone; foot.classList.add('gold'); }
+  else foot.textContent = '';
+}
+
+function readingRows(d, t) {
+  const rows = [];
+  const push = (list, max) => { for (const r of (Array.isArray(list) ? list : []).slice(0, max)) if (r?.ref) rows.push({ slot: t.slots[r.slot] ?? '', ref: r.ref }); };
+  const rd = d.readings ?? {};
+  if (rd.daily?.length) push(rd.daily, 6);
+  else {
+    if (rd.morning?.length) { rows.push({ h: t.morning }); push(rd.morning, 3); }
+    if (rd.evening?.length) { rows.push({ h: t.evening }); push(rd.evening, 3); }
+  }
+  return rows;
+}
+
+function renderReadings(d) {
+  const t = tr(d.lang);
+  $('rtitle').textContent = t.readings;
+  const rows = readingRows(d, t);
+  $('rlist').replaceChildren(...rows.map((r) => {
+    const div = document.createElement('div');
+    if (r.h) { div.className = 'r h'; div.textContent = r.h; return div; }
+    div.className = 'r';
+    if (r.slot) { const b = document.createElement('b'); b.textContent = r.slot; div.append(b); }
+    div.append(document.createTextNode(r.ref));
+    return div;
+  }));
+  return rows.some((r) => !r.h);
+}
+
+function renderLink(d) {
+  const t = tr(d.lang);
+  drawRing(null);
+  $('ltitle').textContent = d.note || t.link;
+  $('code').textContent = d.code || '';
+  $('code').style.display = d.code ? '' : 'none';
+  $('where').textContent = d.code ? t.where : (d.hint || t.asking);
+  $('where').style.top = d.code ? '128px' : '92px';
+  $('plus').textContent = d.code ? t.plus : '';
+  const m = Math.round(Number(d.expiresIn) / 60);
+  $('valid').textContent = d.code && m > 0 ? t.valid(m) : '';
+}
+
+function renderNotice(d) {
+  const t = tr(d.lang);
+  drawRing(null);
+  let title = '', hint = '';
+  if (d.mode === 'premium') { title = t.premium; hint = t.premiumHint; }
+  else if (d.mode === 'disabled') { title = t.disabled; hint = t.disabledHint; }
+  else if (d.offline) { title = t.noApi; hint = t.noApiHint; }
+  else { title = t.waiting; }
+  $('ntitle').textContent = title;
+  $('nhint').textContent = hint;
+}
+
+// The day and the readings take turns: the day for 14 s, the readings for 8 s.
+function startCycle(hasReadings) {
+  if (cycle) { clearTimeout(cycle); cycle = null; }
+  if (!hasReadings) { readingsOn = false; show('day'); return; }
+  const tick = () => {
+    readingsOn = !readingsOn;
+    show(readingsOn ? 'readings' : 'day');
+    cycle = setTimeout(tick, readingsOn ? 8000 : 14000);
+  };
+  show(readingsOn ? 'readings' : 'day');
+  cycle = setTimeout(tick, readingsOn ? 8000 : 14000);
+}
+
+function render(d) {
+  d = d && typeof d === 'object' ? d : {};
+  const sameKind = data?.mode === d.mode;
+  data = d;
+  window.miblo?.quality?.('low');
+  if (d.mode === 'day') {
+    renderDay(d);
+    const hasReadings = renderReadings(d);
+    if (!sameKind || !cycle !== !hasReadings) startCycle(hasReadings);
+    else show(hasReadings && readingsOn ? 'readings' : 'day');
+    return;
+  }
+  if (cycle) { clearTimeout(cycle); cycle = null; readingsOn = false; }
+  if (d.mode === 'link') { renderLink(d); show('link'); return; }
+  renderNotice(d);
+  show('notice');
+}
+
+const pick = () => { readingsOn = location.hash === '#leituras'; return SAMPLES[location.hash.slice(1)] || SAMPLES.dia; };
+render(window.miblo?.data ?? pick());
+window.miblo?.on?.('data', render);
+addEventListener('hashchange', () => render(pick()));
+</script>
+</body>
+</html>
