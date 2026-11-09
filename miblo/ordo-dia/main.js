@@ -15,7 +15,7 @@
 // The API and, when it does not answer, its second host. Both are in manifest "network".
 const API_BASES = ['https://api.caminhoanglicano.com.br/api/v1', 'https://api.oficio.app/api/v1'];
 const CLIENT_ID = 'ordo-miblo';
-export const APP_VERSION = '0.1.0';
+export const APP_VERSION = '0.1.1';
 
 // How often the day is read before the API says (refresh.interval_seconds), and the back-off
 // after a failed call.
@@ -218,6 +218,12 @@ async function stepLinking(ctx, st) {
 
 // ---------------------------------------------------------------- linked
 
+const celebrationName = (day) => {
+  const c = day?.celebration;
+  if (typeof c === 'string') return c || null;
+  return c && typeof c.name === 'string' && c.name ? c.name : null;
+};
+
 const daysBetween = (a, b) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000);
 
 // The payload of /device/today as the page draws it: smaller than the payload (16 KB is the
@@ -238,8 +244,10 @@ export function pageData(today, { lang, showReadings, offline }) {
     lang: /^[a-z]{2}/i.test(String(today.language ?? '')) ? String(today.language).slice(0, 2).toLowerCase() : lang,
     date: today.date ?? null,
     weekday: day.weekday ?? null,
-    title: day.celebration ?? day.title ?? null,
-    subtitle: day.celebration ? day.title ?? null : null,
+    // `celebration` is null or { name, type }: a feast or a commemoration
+    // names the day and the week goes under it.
+    title: celebrationName(day) ?? day.title ?? null,
+    subtitle: celebrationName(day) ? day.title ?? null : null,
     season: day.season ?? null,
     color: day.color ?? null,
     hex: day.color_hex ?? null,
@@ -289,7 +297,9 @@ async function stepLinked(ctx, st) {
   const now = ctx.now();
   const due = !st.nextFetchAt || now >= st.nextFetchAt || (st.dayEndsAt && now >= st.dayEndsAt);
   if (due) {
-    st.dayEndsAt = 0;
+    // The owner's midnight has come: the timer is spent. Before that it is
+    // kept, because a 304 (nothing changed) carries no new countdown.
+    if (st.dayEndsAt && now >= st.dayEndsAt) st.dayEndsAt = 0;
     let r;
     try {
       r = await apiRequest('/device/today', {

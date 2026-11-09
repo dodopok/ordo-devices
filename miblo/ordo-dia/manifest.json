@@ -3,7 +3,7 @@
   "api": 6,
   "display": "page",
   "page": "page.html",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "name": {
     "pt": "Ordo",
     "en": "Ordo"
@@ -99,6 +99,11 @@
       "version": "0.1.0",
       "pt": "Primeira versão: vínculo com a conta do Ordo por código, o dia litúrgico na cor do tempo com o anel do ano, as leituras e os quatro ofícios do dia; lembretes opcionais da Oração da Manhã e da Tarde.",
       "en": "First version: link to an Ordo account with a code, the liturgical day in the season's colour with the year ring, the readings and the four daily offices; optional Morning and Evening Prayer reminders."
+    },
+    {
+      "version": "0.1.1",
+      "pt": "Dias com festa ou comemoração mostram o nome dela (antes saía um texto sem sentido). A virada do dia volta a acontecer na hora certa mesmo quando nada mudou desde a última consulta.",
+      "en": "Days with a feast or a commemoration show its name (it used to come out as meaningless text). The day turns on time again even when nothing changed since the last look."
     }
   ]
 }

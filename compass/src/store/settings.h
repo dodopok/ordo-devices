@@ -2,38 +2,56 @@
 
 #include <Arduino.h>
 
+#include <vector>
+
+#include "../ui/ui.h"
+
 namespace store {
 
-// What survives a reboot: the device token (the only secret on the device),
-// the ETag and body of the last answer so the compass shows yesterday's
-// evening until the network comes back, and the name the owner gave it.
-//
-// Lives in NVS. Flash encryption, when enabled on the board, covers it.
+struct WifiNetwork {
+  String ssid;
+  String pass;
+};
+
+// What the compass remembers across power cycles, in two NVS partitions:
+//   nvs    the device token, the owner's settings and the Wi-Fi networks
+//   cache  the last payload of /device/today and its ETag
+// The payload has a partition of its own because it is close to 10 KB (an
+// NVS string stops at 4000 bytes) and is the one thing rewritten every day.
+// The token is never logged.
 class Settings {
  public:
   void begin();
 
-  String deviceToken() const { return token_; }
-  String deviceName() const { return name_; }
-  String etag() const { return etag_; }
-  String lastPayload() const { return payload_; }
-  // Minutes without a touch before the screen switches off; 0 = never.
-  uint8_t standbyMinutes() const { return standbyMinutes_; }
-  void setStandbyMinutes(uint8_t minutes);
-
+  const String& deviceToken() const { return token_; }
+  const String& deviceName() const { return name_; }
   void saveLink(const String& token, const String& name);
-  void saveToday(const String& etag, const String& payload);
+  // Forgets the link and the cached day (after a 401 or an unlink).
   void clearLink();
-  // Wipes everything the compass knows. Wi-Fi credentials are the
-  // portal's own and are cleared separately.
+
+  const String& etag() const { return etag_; }
+  // The cached payload, read when asked for: nothing keeps 10 KB in RAM.
+  String payload();
+  void saveToday(const String& etag, const String& payload);
+
+  ui::Prefs prefs();
+  void savePrefs(const ui::Prefs& prefs);
+
+  const std::vector<WifiNetwork>& networks() const { return networks_; }
+  // Puts a network first in the list; a known name gets its password updated.
+  void addNetwork(const String& ssid, const String& pass);
+  void removeNetwork(int index);
+
+  // Wipes everything, back to a fresh device.
   void factoryReset();
 
  private:
+  void saveNetworks();
+
   String token_;
   String name_;
   String etag_;
-  String payload_;
-  uint8_t standbyMinutes_ = 10;
+  std::vector<WifiNetwork> networks_;
 };
 
 }  // namespace store

@@ -35,6 +35,14 @@
 // BOOT is a strap pin with an external pull-up; it reads LOW while pressed.
 #define PIN_BTN_BOOT 0
 
+// ES8311 codec over I2S and the NS4150B amplifier behind it. The amplifier's
+// control line has a pull-down on the board: floating means silent.
+#define I2C_ADDR_CODEC 0x18
+#define PIN_I2S_BCLK 9
+#define PIN_I2S_LRCK 45
+#define PIN_I2S_DOUT 8
+#define PIN_PA_CTRL 46
+
 #if defined(ORDO_BOARD_AMOLED_175C)
 #define ORDO_BOARD_NAME "ESP32-S3-Touch-AMOLED-1.75C"
 #define PIN_LCD_RST 1
@@ -42,6 +50,13 @@
 // On the C board the conditioned PWR-button level is on a GPIO.
 #define PIN_BTN_PWR 3
 #define BOARD_HAS_IO_EXPANDER 0
+// MCLK on GPIO16 and the codec's address strap fixed on the board (the 1.75C
+// schematic and Waveshare's 07_ES8311 example): the speaker needs nothing
+// but I2C and I2S.
+#define PIN_I2S_MCLK 16
+#define BOARD_HAS_SPEAKER 1
+// QMI8658 INT1 reaches the processor directly on the C board.
+#define PIN_IMU_INT 21
 #else
 #define ORDO_BOARD_NAME "ESP32-S3-Touch-AMOLED-1.75"
 #define PIN_LCD_RST 39
@@ -51,4 +66,10 @@
 #define BOARD_HAS_IO_EXPANDER 1
 #define I2C_ADDR_IO_EXPANDER 0x20
 #define IO_EXPANDER_PWR_BIT 4
+// MCLK is GPIO42 here and the codec's enable goes through the expander
+// (HARDWARE_REFERENCE.md). The bell is not wired up for this board yet.
+#define PIN_I2S_MCLK 42
+#define BOARD_HAS_SPEAKER 0
+// QMI8658 INT2; INT1 goes through the expander.
+#define PIN_IMU_INT 21
 #endif

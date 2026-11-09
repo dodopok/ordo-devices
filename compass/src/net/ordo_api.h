@@ -46,12 +46,19 @@ class OrdoApi {
   TokenResult pollToken(const String& deviceCode);
   TodayResult fetchToday(const String& deviceToken, const String& etag);
 
+  // The server's clock (UTC seconds) as of the last exchange that got an
+  // answer, read from its `Date` header; 0 when there was none. This is how
+  // a compass without a clock chip knows the time.
+  int64_t serverTime() const { return serverTime_; }
+
  private:
   // One HTTPS exchange. `code` receives the HTTP status, or a negative
   // HTTPClient error. Headers listed in `collect` are available afterwards.
   bool exchange(const String& baseUrl, const char* method, const String& path, const String& body,
                 const String& deviceToken, const String& etag, int& code, String& responseBody,
                 String& responseEtag);
+
+  int64_t serverTime_ = 0;
 };
 
 }  // namespace net

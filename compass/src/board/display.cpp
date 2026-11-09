@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <Arduino_GFX_Library.h>
+#include <driver/gpio.h>
 #include <esp_heap_caps.h>
 
 #include "board_pins.h"
@@ -18,6 +19,7 @@ constexpr size_t kBufferBytes = LCD_WIDTH * kBufferRows * sizeof(uint16_t);
 Arduino_DataBus* bus = nullptr;
 Arduino_CO5300* gfx = nullptr;
 lv_display_t* disp = nullptr;
+uint8_t brightness = 0;
 
 void flushCb(lv_display_t* d, const lv_area_t* area, uint8_t* px_map) {
   const int32_t w = lv_area_get_width(area);
@@ -44,6 +46,9 @@ uint32_t tickCb() { return millis(); }
 }  // namespace
 
 bool displayInit() {
+  // The reset line was held through deep sleep; let go of it before the
+  // driver pulses it.
+  gpio_hold_dis(static_cast<gpio_num_t>(PIN_LCD_RST));
   bus = new Arduino_ESP32QSPI(PIN_LCD_CS, PIN_LCD_SCLK, PIN_LCD_SDIO0, PIN_LCD_SDIO1, PIN_LCD_SDIO2,
                               PIN_LCD_SDIO3);
   gfx = new Arduino_CO5300(bus, PIN_LCD_RST, 0 /* rotation */, LCD_WIDTH, LCD_HEIGHT, LCD_COL_OFFSET, 0,
@@ -72,19 +77,31 @@ bool displayInit() {
 }
 
 void displaySetBrightness(uint8_t level) {
-  if (gfx) gfx->setBrightness(level);
+  if (!gfx || level == brightness) return;
+  brightness = level;
+  gfx->setBrightness(level);
 }
+
+uint8_t displayBrightness() { return brightness; }
 
 void displayOff() {
   if (!gfx) return;
   gfx->setBrightness(0);
+  brightness = 0;
   gfx->displayOff();
 }
 
-void displayOn(uint8_t brightness) {
+void displayOn(uint8_t level) {
   if (!gfx) return;
   gfx->displayOn();
-  gfx->setBrightness(brightness);
+  brightness = level;
+  gfx->setBrightness(level);
+}
+
+void displayHoldForSleep() {
+  pinMode(PIN_LCD_RST, OUTPUT);
+  digitalWrite(PIN_LCD_RST, HIGH);
+  gpio_hold_en(static_cast<gpio_num_t>(PIN_LCD_RST));
 }
 
 lv_display_t* display() { return disp; }
