@@ -381,33 +381,47 @@ void goHome() {
   showPage(S.prefs.homeFace == 1 ? Page::Compass : Page::Now);
 }
 
+void clearDay() {
+  S.day = model::Today();
+  S.dayShown = false;
+  for (bool& d : S.dirty) d = true;
+}
+
 bool showingDay() { return S.dayShown && (S.mode != Mode::Notice || S.noticeOverDay); }
 
 bool showingNotice() { return S.mode == Mode::Notice; }
 
-void onSwipe(Swipe dir) {
+bool onSwipe(Swipe dir) {
   const bool forward = dir == Swipe::Up || dir == Swipe::Left;
   switch (S.mode) {
     case Mode::Pages: {
       const int count = 6;
       const int next = (static_cast<int>(S.page) + (forward ? 1 : count - 1)) % count;
       showPage(static_cast<Page>(next));
-      break;
+      return true;
     }
     case Mode::Settings:
       // The list scrolls up and down; only a sideways swipe leaves it.
-      if (dir == Swipe::Right) goBack();
-      break;
+      if (dir != Swipe::Right) return false;
+      goBack();
+      return true;
+    case Mode::SettingsSub:
+      // Some of these scroll too (Wi-Fi, about).
+      if (dir != Swipe::Right) return false;
+      goBack();
+      return true;
     case Mode::Beads:
     case Mode::Silence:
     case Mode::Torch:
-    case Mode::SettingsSub:
-      if (!forward) goBack();
-      break;
+      if (forward) return false;
+      goBack();
+      return true;
     case Mode::Notice:
-      if (S.noticeOverDay) dismissNotice();
-      break;
+      if (!S.noticeOverDay) return false;
+      dismissNotice();
+      return true;
   }
+  return false;
 }
 
 void onBootPress() {

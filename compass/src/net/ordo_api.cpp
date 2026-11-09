@@ -5,12 +5,14 @@
 #include <WiFiClientSecure.h>
 
 #include "../app_config.h"
+#include "../sys/clock.h"
 #include "root_certs.h"
 
 namespace net {
 namespace {
 
 const char* kEtagHeader = "ETag";
+const char* kDateHeader = "Date";
 
 TokenPoll pollStatusFor(const String& error) {
   if (error == "authorization_pending") return TokenPoll::Pending;
@@ -34,6 +36,7 @@ bool OrdoApi::exchange(const String& baseUrl, const char* method, const String& 
   client.setTimeout(cfg::kHttpTimeoutMs / 1000);
 
   HTTPClient http;
+  http.setConnectTimeout(cfg::kHttpTimeoutMs);
   http.setTimeout(cfg::kHttpTimeoutMs);
   http.setReuse(false);
   http.setUserAgent(ORDO_USER_AGENT);
@@ -48,11 +51,13 @@ bool OrdoApi::exchange(const String& baseUrl, const char* method, const String& 
     http.addHeader("X-Ordo-Device-Firmware", ORDO_FIRMWARE_VERSION);
   }
   if (!etag.isEmpty()) http.addHeader("If-None-Match", etag);
-  const char* collect[] = {kEtagHeader};
-  http.collectHeaders(collect, 1);
+  const char* collect[] = {kEtagHeader, kDateHeader};
+  http.collectHeaders(collect, 2);
 
   code = (strcmp(method, "POST") == 0) ? http.POST(body) : http.GET();
   if (code > 0) {
+    int64_t serverTime = 0;
+    if (sys::parseHttpDate(http.header(kDateHeader).c_str(), serverTime)) serverTime_ = serverTime;
     responseEtag = http.header(kEtagHeader);
     responseBody = (code == HTTP_CODE_NOT_MODIFIED) ? String() : http.getString();
   }

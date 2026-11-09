@@ -67,7 +67,8 @@ constexpr int32_t kSwipePixels = 42;
 
 // ---- battery
 constexpr int kBatteryQuietPercent = 10;  // no bell, no torch
-constexpr int kBatteryOffPercent = 3;     // save and switch off
+constexpr int kBatteryOffPercent = 3;     // save and switch off...
+constexpr int kBatteryOffMillivolts = 3400;  // ...when the cell's voltage agrees
 
 // ---- Wi-Fi
 constexpr int kMaxNetworks = 5;

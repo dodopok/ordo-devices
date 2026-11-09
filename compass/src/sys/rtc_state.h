@@ -20,9 +20,12 @@ struct RtcState {
   int32_t utcOffsetSeconds; // the owner's zone
   bool utcOffsetKnown;
 
-  // The day on record and when the API last confirmed it.
-  int64_t lastAnswerUtc;    // last 200 or 304 from /device/today, 0: never
-  int64_t nextRetryUtc;     // no sync before this (rate limit, repeated failure)
+  // When the API last confirmed the day on record, and when to ask again
+  // after a failure. Raw seconds, so they work before the clock is set.
+  int64_t lastAnswerRaw;    // last 200 or 304 from /device/today; 0: never
+  int64_t nextTryRaw;       // no sync before this (rate limit, repeated failure)
+  // 0: fine; 1: the owner's subscription lapsed; 2: this client was disabled.
+  uint8_t blocked;
 
   // What already rang today, so a wake a little early or late cannot ring twice.
   int32_t firedDay;         // local date, days since 1970

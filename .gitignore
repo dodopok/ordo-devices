@@ -14,5 +14,6 @@ compass/include/secrets.h
 
 # Screen simulator and font generation leftovers
 compass/sim/build/
+compass/sim/build-asan/
 compass/sim/out/
 compass/tools/.fontwork/

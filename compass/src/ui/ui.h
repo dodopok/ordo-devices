@@ -106,6 +106,8 @@ void dismissNotice();
 // -------------------------------------------------------------------- state
 // The day to show: already the view for the local date (model::viewFor).
 void setToday(const model::Today& today);
+// Forgets the day (after an unlink): notices are all there is to show.
+void clearDay();
 void setStatus(const Status& status);
 // A time of silence under way, and how much of it is left.
 void setSilence(bool running, uint32_t remainingSeconds);
@@ -119,7 +121,9 @@ bool showingNotice();
 // --------------------------------------------------------------------- input
 // Touch swipes and the BOOT button reach the screens through the controller.
 enum class Swipe { Up, Down, Left, Right };
-void onSwipe(Swipe dir);
+// True when the swipe changed the screen (the caller then cancels the rest
+// of that press); false when the screen keeps it, as a scrolling list does.
+bool onSwipe(Swipe dir);
 void onBootPress();
 void onBootLongPress();
 

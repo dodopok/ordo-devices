@@ -1,6 +1,6 @@
 #pragma once
 
-#include <stdint.h>
+#include <Arduino.h>
 
 namespace board {
 
@@ -8,20 +8,37 @@ struct BatteryState {
   bool present = false;
   bool charging = false;
   bool onUsb = false;
-  int percent = -1;  // -1 when unknown
+  int percent = -1;
+  int millivolts = 0;
 };
 
-// Opens the AXP2101 on the shared bus and switches on battery telemetry.
-// Returns false if the PMU did not answer; the compass still works on USB.
-bool powerInit();
+// Why the processor is running.
+enum class Wake {
+  ColdBoot,     // power applied, reset, or a firmware upload
+  PowerButton,  // PWR
+  BootButton,   // BOOT
+  Touch,        // a finger on the glass, when the owner allowed that
+  Timer,        // a wake the firmware scheduled for itself
+};
 
+// Reads why we woke, brings up the AXP2101 and the buttons, and makes sure
+// the speaker amplifier is off. Returns false when the PMU does not answer;
+// the compass still runs, without battery telemetry.
+bool powerInit();
+Wake wakeCause();
 BatteryState batteryState();
 
-// The side PWR button. On the 1.75C it is a GPIO; on the standard board it
-// is read through the TCA9554 expander. Debounced edge: true once per press.
+// PWR: true once per press. BOOT: the level, low-active, debounced by the
+// caller's timing.
 bool powerButtonPressedEdge();
+bool bootButtonDown();
 
-// The BOOT button (GPIO0), level: true while held.
-bool bootButtonHeld();
+// Deep sleep: only the low-power timer and the wake pins stay alive. Never
+// returns; the next thing to run is setup(). `timerSeconds` 0 means no
+// scheduled wake.
+[[noreturn]] void deepSleep(uint64_t timerSeconds, bool touchWakes);
+
+// Switches the board off at the PMU. Only the PWR button brings it back.
+[[noreturn]] void powerOff();
 
 }  // namespace board

@@ -46,10 +46,13 @@
 #define LV_DRAW_SW_SHADOW_CACHE_SIZE 0
 #define LV_DRAW_SW_CIRCLE_CACHE_SIZE 4
 
+/* LVGL's own log only in debug builds (and in the simulator). */
+#if defined(ORDO_DEBUG) || !defined(ARDUINO)
 #define LV_USE_LOG 1
-#if LV_USE_LOG
 #define LV_LOG_LEVEL LV_LOG_LEVEL_WARN
 #define LV_LOG_PRINTF 1
+#else
+#define LV_USE_LOG 0
 #endif
 
 #define LV_USE_ASSERT_NULL 1

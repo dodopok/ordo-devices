@@ -74,22 +74,23 @@ void menuRow(lv_obj_t* scr, const char* label, int32_t y, Item item) {
       LV_EVENT_CLICKED, reinterpret_cast<void*>(static_cast<uintptr_t>(item)));
 }
 
-// A candle flame, painted point by point into a small canvas: a drop that is
-// narrow at the tip and round at the base, white-hot at the core, gold around
-// it and amber at the edge. Painted once; only its opacity moves after that.
-void flame(lv_obj_t* scr, int32_t y) {
-  constexpr int32_t w = 68;
-  constexpr int32_t h = 104;
-  lv_draw_buf_t* buf = lv_draw_buf_create(w, h, LV_COLOR_FORMAT_ARGB8888, LV_STRIDE_AUTO);
-  if (!buf) return;
-  lv_obj_t* canvas = lv_canvas_create(scr);
-  lv_canvas_set_draw_buf(canvas, buf);
-  lv_obj_add_event_cb(
-      canvas, [](lv_event_t* e) { lv_draw_buf_destroy(static_cast<lv_draw_buf_t*>(lv_event_get_user_data(e))); },
-      LV_EVENT_DELETE, buf);
-  inert(canvas);
+// A candle flame, painted point by point: a drop that is narrow at the tip
+// and round at the base, white-hot at the core, gold around it and amber at
+// the edge. It is painted once into a buffer that lives for as long as the
+// firmware runs; every screen that shows a flame points at the same pixels,
+// and only the opacity moves after that.
+constexpr int32_t kFlameW = 68;
+constexpr int32_t kFlameH = 104;
 
-  auto mix = [](uint32_t from, uint32_t to, float f) -> lv_color_t {
+lv_draw_buf_t* flamePixels() {
+  static lv_draw_buf_t* buf = nullptr;
+  if (buf) return buf;
+  buf = lv_draw_buf_create(kFlameW, kFlameH, LV_COLOR_FORMAT_ARGB8888, LV_STRIDE_AUTO);
+  if (!buf) return nullptr;
+  constexpr int32_t w = kFlameW;
+  constexpr int32_t h = kFlameH;
+
+  auto mix = [](uint32_t from, uint32_t to, float f) -> lv_color32_t {
     if (f < 0) f = 0;
     if (f > 1) f = 1;
     auto channel = [&](int shift) -> uint8_t {
@@ -97,30 +98,44 @@ void flame(lv_obj_t* scr, int32_t y) {
       const float b = static_cast<float>((to >> shift) & 0xFF);
       return static_cast<uint8_t>(a + (b - a) * f);
     };
-    return lv_color_make(channel(16), channel(8), channel(0));
+    lv_color32_t c;
+    c.red = channel(16);
+    c.green = channel(8);
+    c.blue = channel(0);
+    c.alpha = 255;
+    return c;
   };
 
   for (int32_t py = 0; py < h; py++) {
+    lv_color32_t* row = reinterpret_cast<lv_color32_t*>(buf->data + static_cast<size_t>(py) * buf->header.stride);
     const float t = (static_cast<float>(py) + 0.5f) / static_cast<float>(h);
     const float half = (w / 2.0f - 1.5f) * sinf(static_cast<float>(M_PI) * powf(t, 1.7f));
     for (int32_t px = 0; px < w; px++) {
       const float dx = fabsf(static_cast<float>(px) + 0.5f - w / 2.0f);
       const float edge = half - dx;
       if (edge <= 0) {
-        lv_canvas_set_px(canvas, px, py, lv_color_black(), LV_OPA_TRANSP);
+        row[px].red = row[px].green = row[px].blue = row[px].alpha = 0;
         continue;
       }
       // Distance from the core, which sits low in the flame.
       const float nx = dx / (w / 2.0f);
       const float ny = (t - 0.76f) / 0.42f;
       const float r = sqrtf(nx * nx * 2.2f + ny * ny);
-      lv_color_t color;
-      if (r < 0.42f) color = mix(0xFFF8E1, 0xFBD76B, r / 0.42f);
-      else color = mix(0xFBD76B, 0xD9772E, (r - 0.42f) / 0.75f);
-      const float alpha = edge >= 1.6f ? 1.0f : edge / 1.6f;
-      lv_canvas_set_px(canvas, px, py, color, static_cast<lv_opa_t>(alpha * 255.0f));
+      lv_color32_t color = r < 0.42f ? mix(0xFFF8E1, 0xFBD76B, r / 0.42f) : mix(0xFBD76B, 0xD9772E, (r - 0.42f) / 0.75f);
+      color.alpha = static_cast<uint8_t>((edge >= 1.6f ? 1.0f : edge / 1.6f) * 255.0f);
+      row[px] = color;
     }
   }
+  return buf;
+}
+
+void flame(lv_obj_t* scr, int32_t y) {
+  constexpr int32_t h = kFlameH;
+  lv_draw_buf_t* buf = flamePixels();
+  if (!buf) return;
+  lv_obj_t* canvas = lv_image_create(scr);
+  lv_image_set_src(canvas, buf);
+  inert(canvas);
   lv_obj_align(canvas, LV_ALIGN_TOP_MID, 0, y);
 
   lv_obj_t* wick = dot(scr, 6, lv_color_hex(0x4A4640), theme::bg(), 0);
