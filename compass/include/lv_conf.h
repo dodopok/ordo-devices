@@ -33,6 +33,9 @@
 #define LV_DRAW_SW_SUPPORT_RGB888 0
 #define LV_DRAW_SW_SUPPORT_XRGB8888 0
 #define LV_DRAW_SW_SUPPORT_ARGB8888 0
+// LVGL 9.6 enables the premultiplied variant by default and then calls the
+// ARGB8888 blender it did not compile; both off until ARGB8888 is needed.
+#define LV_DRAW_SW_SUPPORT_ARGB8888_PREMULTIPLIED 0
 #define LV_DRAW_SW_SUPPORT_L8 0
 #define LV_DRAW_SW_SUPPORT_AL88 0
 #define LV_DRAW_SW_SUPPORT_A8 1
@@ -85,7 +88,7 @@
 #define LV_USE_ANIMIMG 0
 #define LV_USE_BUTTONMATRIX 0
 #define LV_USE_CALENDAR 0
-#define LV_USE_CANVAS 0
+#define LV_USE_CANVAS 1
 #define LV_USE_CHART 0
 #define LV_USE_CHECKBOX 0
 #define LV_USE_DROPDOWN 0

@@ -67,7 +67,7 @@ lv_obj_t* dot(lv_obj_t* parent, int32_t size, lv_color_t fill, lv_color_t border
   lv_obj_set_style_border_color(obj, border, 0);
   lv_obj_set_style_border_width(obj, borderWidth, 0);
   lv_obj_set_style_pad_all(obj, 0, 0);
-  lv_obj_remove_flag(obj, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_remove_flag(obj, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE));
   return obj;
 }
 
@@ -76,7 +76,7 @@ void placePolar(lv_obj_t* obj, float radius, float fraction) {
   const float angle = fraction * 2.0f * static_cast<float>(M_PI) - static_cast<float>(M_PI) / 2.0f;
   const int32_t x = kCenter + static_cast<int32_t>(lroundf(radius * cosf(angle)));
   const int32_t y = kCenter + static_cast<int32_t>(lroundf(radius * sinf(angle)));
-  const int32_t half = lv_obj_get_style_width(obj, 0) / 2;
+  const int32_t half = lv_obj_get_style_width(obj, LV_PART_MAIN) / 2;
   lv_obj_set_pos(obj, x - half, y - half);
 }
 
@@ -97,7 +97,7 @@ lv_obj_t* ringArc(lv_obj_t* parent, int32_t diameter, int32_t width, float from,
   lv_obj_set_style_arc_opa(arc, LV_OPA_TRANSP, LV_PART_INDICATOR);
   lv_obj_set_style_bg_opa(arc, LV_OPA_TRANSP, LV_PART_KNOB);
   lv_obj_set_style_pad_all(arc, 0, LV_PART_KNOB);
-  lv_obj_remove_flag(arc, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_remove_flag(arc, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE));
   return arc;
 }
 
