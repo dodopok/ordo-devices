@@ -161,15 +161,16 @@ void Controller::showInitial() {
     if (pending_ == Notice::Bell) what.bellHour = pendingValue_;
     if (pending_ == Notice::SilenceDone) what.silence = true;
     pending_ = Notice::None;
-    lv_timer_handler();
-    board::displaySetBrightness(targetBrightness(0));
+    // The notice is what this wake is for: it is drawn before the panel
+    // lights up, and the bell waits until it can be read.
     fire(what);
     return;
   }
 
-  // Everything LVGL has to draw is drawn before the panel lights up.
+  // Everything LVGL has to draw is drawn before the panel lights up. With
+  // animations on, the screens bring the light up themselves (ui::transition).
   lv_timer_handler();
-  board::displaySetBrightness(targetBrightness(0));
+  applyBrightness();
   setCpuFrequencyMhz(cfg::kCpuScreenMhz);
 }
 
@@ -179,6 +180,11 @@ void Controller::loop() {
   net::wifiLoop();
   lv_timer_handler();
   handleInput();
+  if (later_) {
+    const std::function<void()> job = later_;
+    later_ = nullptr;
+    job();
+  }
 
   switch (flow_) {
     case Flow::WifiSetup: stepWifiSetup(); break;
@@ -363,9 +369,24 @@ void Controller::requestSync(bool force) {
 }
 
 void Controller::stepSync() {
+  // A request under way is waited for whatever else happens; it has its own
+  // time limit (cfg::kHttpTimeoutMs).
+  if (fetch_.running) {
+    if (!fetch_.done) return;
+    fetch_.running = false;
+    const net::TodayResult result = fetch_.result;
+    fetch_.result = net::TodayResult();
+    // Unlinked while it was in the air: the answer is nobody's.
+    if (linked()) applyToday(result);
+    if (syncing_) finishSync();
+    return;
+  }
   if (!syncing_) return;
   switch (net::wifiState()) {
     case net::WifiState::Connected:
+      if (startFetch()) break;
+      // No memory for the task: ask from here, with the screen settled first.
+      settleScreen();
       fetchToday();
       finishSync();
       break;
@@ -406,8 +427,27 @@ bool Controller::syncBlocking() {
   return connected;
 }
 
-void Controller::fetchToday() {
-  const net::TodayResult result = api_.fetchToday(settings_.deviceToken(), settings_.etag());
+bool Controller::startFetch() {
+  fetch_.token = settings_.deviceToken();
+  fetch_.etag = settings_.etag();
+  fetch_.result = net::TodayResult();
+  fetch_.done = false;
+  // TLS wants a deep stack; the radio's own tasks live on core 0 too.
+  if (xTaskCreatePinnedToCore(fetchTask, "ordo-fetch", 16384, this, 1, nullptr, 0) != pdPASS) return false;
+  fetch_.running = true;
+  return true;
+}
+
+void Controller::fetchTask(void* self) {
+  Controller* c = static_cast<Controller*>(self);
+  c->fetch_.result = c->api_.fetchToday(c->fetch_.token, c->fetch_.etag);
+  c->fetch_.done = true;
+  vTaskDelete(nullptr);
+}
+
+void Controller::fetchToday() { applyToday(api_.fetchToday(settings_.deviceToken(), settings_.etag())); }
+
+void Controller::applyToday(const net::TodayResult& result) {
   sys::RtcState& r = sys::rtc();
   const int64_t raw = sys::rawSeconds();
   // Every answer, whatever it says, carries the time.
@@ -568,23 +608,24 @@ void Controller::everySecond() {
 }
 
 void Controller::fire(const Due& what) {
+  int strikes = 0;
   if (what.silence) {
     ui::setSilence(false, 0);
     ui::showSilenceDone();
-    lv_display_trigger_activity(nullptr);
-    lv_timer_handler();
-    ringBell(3);
+    strikes = 3;
   } else if (what.reminder >= 0) {
     ui::showReminder(what.reminder);
-    lv_display_trigger_activity(nullptr);
-    lv_timer_handler();
-    ringBell(2);
+    strikes = 2;
   } else if (what.bellHour >= 0) {
     ui::showHourBell(what.bellHour);
-    lv_display_trigger_activity(nullptr);
-    lv_timer_handler();
-    ringBell(3);
+    strikes = 3;
   }
+  if (strikes == 0) return;
+  lv_display_trigger_activity(nullptr);
+  // Drawn and lit before the bell, which holds everything else for seconds.
+  lv_timer_handler();
+  applyBrightness();
+  ringBell(strikes);
 }
 
 void Controller::ringBell(int strikes) {
@@ -656,9 +697,31 @@ uint8_t Controller::targetBrightness(uint32_t idleMs) const {
   return level;
 }
 
+// The owner's brightness, the hour and the desk decide how bright; the
+// screens scale that down to nothing and back while one replaces another.
+void Controller::applyBrightness() {
+  if (!screenUp_) return;
+  const uint32_t level = targetBrightness(lv_display_get_inactive_time(nullptr));
+  board::displaySetBrightness(static_cast<uint8_t>(level * ui::brightnessScale() / 255));
+}
+
+// Lets a screen change that is under way finish, and gives a short effect
+// `atLeastMs` to play, before something that blocks: the bell holds the
+// processor for seconds, and the glass would stay frozen half lit.
+void Controller::settleScreen(uint32_t atLeastMs) {
+  const uint32_t started = millis();
+  for (;;) {
+    lv_timer_handler();
+    const uint32_t spent = millis() - started;
+    if (spent >= 900 || (spent >= atLeastMs && !ui::changingScreen())) break;
+    delay(5);
+  }
+  applyBrightness();
+}
+
 void Controller::applyPower() {
   const uint32_t idle = lv_display_get_inactive_time(nullptr);
-  board::displaySetBrightness(targetBrightness(idle));
+  applyBrightness();
   if (deskMode()) return;
 
   const ui::PowerHint hint = ui::powerHint();
@@ -683,6 +746,11 @@ void Controller::pushStatus() {
   status.linked = linked();
   const sys::RtcState& r = sys::rtc();
   status.syncedMinutesAgo = r.lastAnswerRaw == 0 ? UINT32_MAX : static_cast<uint32_t>((sys::rawSeconds() - r.lastAnswerRaw) / 60);
+  // The radio is off nearly all the time, so the mark tells of the last
+  // time it was on: how strong the network was, or that none answered.
+  if (!net::wifiConfigured()) status.wifiBars = -1;
+  else if (r.syncFailures > 0 || r.rssi == 0) status.wifiBars = 0;
+  else status.wifiBars = r.rssi >= -62 ? 3 : (r.rssi >= -75 ? 2 : 1);
   ui::setStatus(status);
 }
 
@@ -722,13 +790,17 @@ ui::Actions Controller::actions() {
     settings_.savePrefs(prefs);
   };
   a.sleepNow = [this]() { goToSleep(); };
+  // The ones below block or draw a last message, so they run from the main
+  // loop (see `later_`), not from the tap that asked.
   a.powerOff = [this]() {
-    ui::showMessage("Desligando", "aperte PWR para ligar de novo", false);
-    lv_timer_handler();
-    delay(1200);
-    sys::rtc().beads = ui::beadsCount();
-    board::displayOff();
-    board::powerOff();
+    later_ = [this]() {
+      ui::showMessage("Desligando", "aperte PWR para ligar de novo", false);
+      lv_timer_handler();
+      delay(1200);
+      sys::rtc().beads = ui::beadsCount();
+      board::displayOff();
+      board::powerOff();
+    };
   };
   a.syncNow = [this]() { requestSync(true); };
   a.openWifiPortal = [this]() { enterWifiSetup(); };
@@ -745,18 +817,25 @@ ui::Actions Controller::actions() {
     if (net::wifiConfigured()) enterLinking();
     else enterWifiSetup();
   };
-  a.factoryReset = [this]() { factoryReset(); };
+  a.factoryReset = [this]() { later_ = [this]() { factoryReset(); }; };
   a.bell = [this](int strikes) {
-    lv_timer_handler();
-    ringBell(strikes);
+    later_ = [this, strikes]() {
+      // The last bead lights up and its ring opens before the bell holds things.
+      settleScreen(prefs_.animations ? 450 : 0);
+      ringBell(strikes);
+    };
   };
+  a.brightnessMoved = [this]() { applyBrightness(); };
   a.silence = [this](int minutes) {
     sys::RtcState& r = sys::rtc();
     if (minutes > 0) {
       r.silenceEndsRaw = sys::rawSeconds() + static_cast<int64_t>(minutes) * 60;
       ui::setSilence(true, static_cast<uint32_t>(minutes) * 60);
-      lv_timer_handler();
-      ringBell(1);
+      // The candle is on the glass before the first bell.
+      later_ = [this]() {
+        settleScreen();
+        ringBell(1);
+      };
     } else {
       r.silenceEndsRaw = 0;
       ui::setSilence(false, 0);

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+#include <functional>
 #include <Arduino.h>
 
 #include "../board/power.h"
@@ -55,6 +57,9 @@ class Controller {
   void finishSync();
   bool syncBlocking();
   void fetchToday();
+  void applyToday(const net::TodayResult& result);
+  bool startFetch();
+  static void fetchTask(void* self);
   void showBlocked();
 
   // time-driven
@@ -70,6 +75,8 @@ class Controller {
   // input and power
   void handleInput();
   void applyPower();
+  void applyBrightness();
+  void settleScreen(uint32_t atLeastMs = 0);
   uint8_t targetBrightness(uint32_t idleMs) const;
   bool deskMode() const;
   void pushStatus();
@@ -93,6 +100,18 @@ class Controller {
   // sync
   bool syncing_ = false;
   uint32_t syncStartedMs_ = 0;
+  // With the screen on, the request to the API runs on a task of its own:
+  // it takes a second or two, and the glass keeps answering meanwhile. The
+  // task only fills `result`; everything that follows from it happens back
+  // on the main loop, once `done` is set.
+  struct Fetch {
+    String token;
+    String etag;
+    net::TodayResult result;
+    std::atomic<bool> done{false};
+    bool running = false;
+  };
+  Fetch fetch_;
 
   // Wi-Fi setup
   net::PortalState portalShown_ = net::PortalState::Off;
@@ -106,6 +125,12 @@ class Controller {
   uint32_t pollIntervalMs_ = 5000;
   uint32_t lastCountdownAt_ = 0;
   uint32_t lastWifiTryMs_ = 0;
+
+  // What a screen asked for that blocks, or that needs LVGL to draw first
+  // (the bell, the last message before switching off). Screens ask from
+  // inside LVGL's own callbacks, where lv_timer_handler() returns without
+  // doing anything; the request waits here for the main loop.
+  std::function<void()> later_;
 
   // housekeeping
   uint32_t startedMs_ = 0;

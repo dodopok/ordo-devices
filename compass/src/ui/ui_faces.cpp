@@ -6,6 +6,37 @@
 namespace ui::detail {
 namespace {
 
+// The marker's way to today: it sets out a quarter of the year back and
+// comes to rest on the day, so the eye is led to where the year stands.
+struct Travel {
+  float radius;
+  float from;
+  float to;
+};
+
+void travelStep(lv_anim_t* a, int32_t v) {
+  const Travel* travel = static_cast<const Travel*>(lv_anim_get_user_data(a));
+  placePolar(static_cast<lv_obj_t*>(a->var), travel->radius, travel->from + (travel->to - travel->from) * static_cast<float>(v) / 1000.0f);
+}
+
+void travelTo(lv_obj_t* marker, float radius, float progress) {
+  if (!entrance()) return;
+  const float from = progress > 0.22f ? progress - 0.22f : 0.0f;
+  if (progress - from < 0.01f) return;
+  lv_anim_t a;
+  lv_anim_init(&a);
+  lv_anim_set_var(&a, marker);
+  lv_anim_set_values(&a, 0, 1000);
+  lv_anim_set_duration(&a, 750);
+  lv_anim_set_delay(&a, 120);
+  lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+  lv_anim_set_user_data(&a, new Travel{radius, from, progress});
+  lv_anim_set_custom_exec_cb(&a, travelStep);
+  // Freed when the journey ends or the marker is deleted under it.
+  lv_anim_set_deleted_cb(&a, [](lv_anim_t* anim) { delete static_cast<Travel*>(lv_anim_get_user_data(anim)); });
+  lv_anim_start(&a);
+}
+
 // The year as a ring: every season in its colour, the current one lit, the
 // feasts as points and a marker on today.
 void yearRing(lv_obj_t* scr, int32_t diameter, int32_t width, bool withFeasts) {
@@ -20,17 +51,23 @@ void yearRing(lv_obj_t* scr, int32_t diameter, int32_t width, bool withFeasts) {
   }
   const float centre = diameter / 2.0f - width / 2.0f - 1.0f;
   if (withFeasts) {
+    // The feasts light up round the year, one after the other.
+    uint32_t index = 0;
     for (const auto& feast : t.feasts) {
       lv_obj_t* d = dot(scr, 7, feast.color, feast.color, 0);
       placePolar(d, diameter / 2.0f + 6.0f, feast.at);
+      fadeIn(d, 200 + index++ * 30, 200);
     }
   }
   const lv_color_t accent = accentOf(t);
   const int32_t size = width + 12;
+  // The core rides inside the marker, so the two travel as one.
   lv_obj_t* marker = dot(scr, size, theme::bg(), accent, 3);
+  const int32_t coreSize = size - 16 < 6 ? 6 : size - 16;
+  lv_obj_t* core = dot(marker, coreSize, accent, accent, 0);
+  lv_obj_center(core);
   placePolar(marker, centre, t.progress);
-  lv_obj_t* core = dot(scr, size - 16 < 6 ? 6 : size - 16, accent, accent, 0);
-  placePolar(core, centre, t.progress);
+  travelTo(marker, centre, t.progress);
 }
 
 // The four offices as dots, the one the hour calls for breathing.
@@ -47,6 +84,9 @@ void officeDots(lv_obj_t* scr, int32_t y, int next, bool withLetters) {
       breathe(d, LV_OPA_40, [](void* obj, int32_t v) {
         lv_obj_set_style_opa(static_cast<lv_obj_t*>(obj), static_cast<lv_opa_t>(v), 0);
       });
+    } else {
+      // The day's prayer so far, counted out one office at a time.
+      fadeIn(d, 260 + static_cast<uint32_t>(i) * 90, 240);
     }
     if (withLetters) {
       lv_obj_t* letter = text(scr, officeShort(i), theme::tiny(), done ? theme::fg() : theme::dim(), y + 24, 1, 40);

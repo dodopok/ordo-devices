@@ -10,7 +10,7 @@ lá na API.
 
 | Pasta | O quê | Estado |
 | --- | --- | --- |
-| [`compass/`](compass/) | Firmware da bússola para a Waveshare ESP32-S3-Touch-AMOLED-1.75 (e 1.75C) | 0.2: chaveiro, compila, ainda não testado na placa |
+| [`compass/`](compass/) | Firmware da bússola para a Waveshare ESP32-S3-Touch-AMOLED-1.75 (e 1.75C) | 0.3: chaveiro. A 0.2 roda na 1.75C; a 0.3 (animações, menu novo) compila e passa no simulador, ainda não gravada |
 | [`miblo/`](miblo/) | App de página para o Miblo Desk, publicado na Loja de Apps do Desk | fase 4, primeira versão |
 
 ## A bússola
@@ -81,7 +81,17 @@ para a esquerda avança, para baixo ou para a direita volta, e depois da
 | Leituras | as leituras do dia, por referência |
 | Ofícios | os quatro ofícios e a sequência de dias |
 | Semana | os próximos seis dias e a contagem para a próxima festa |
-| Mais | Contas, Silêncio, Lanterna e Ajustes |
+| Mais | quatro blocos: Contas, Silêncio, Lanterna e Ajustes, cada um dizendo como está ("12 de 33", "ainda 14 min") |
+
+No topo de todas elas ficam o Wi-Fi (os arcos dizem o sinal da última rede
+em que entrou; pulsam enquanto sincroniza) e a bateria com a porcentagem
+(dourada carregando, vermelha abaixo de 10%).
+
+Trocar de tela escurece e clareia o painel num piscar: a tela nova é
+pintada no escuro, então não se vê a varredura de cima para baixo. Ao
+chegar, cada tela tem a sua entrada: o marcador do anel percorre o último
+trecho do ano até hoje, as festas acendem em volta, os ofícios chegam um a
+um, as leituras descem em cascata. Dá para desligar em Ajustes › Animações.
 
 - **Contas**: terço anglicano (33 contas, com a invitatória e as cruciformes)
   ou corda de 33, 50 ou 100 para a Oração de Jesus. BOOT ou um toque conta
@@ -109,7 +119,7 @@ Em Mais › Ajustes, direto na bússola:
 
 | Grupo | Ajuste |
 | --- | --- |
-| Tela | apaga em 10, 15, 30 ou 60 segundos; brilho baixo, médio ou alto; escurecer à noite; tela inicial (Agora ou Bússola); toque acorda; acesa na tomada |
+| Tela | apaga em 10, 15, 30 ou 60 segundos; brilho baixo, médio ou alto; escurecer à noite; tela inicial (Agora, Bússola, Leituras, Ofícios ou Semana); animações; toque acorda; acesa na tomada |
 | Som | ligado ou não; volume; sino às 6h, 12h e 18h |
 | Lembretes | um horário para cada ofício; toca só se o ofício ainda não foi orado |
 | Rede | redes Wi-Fi guardadas (até cinco) e adicionar outra; sincronizar a cada 2, 4, 6 ou 12 horas, ou só ao acordar; sincronizar agora |
@@ -145,8 +155,9 @@ deles o anel do ano ainda diz o tempo e a cor. Os ofícios orados aparecem
 como estavam na última sincronização.
 
 **Ainda não medido.** O consumo em cada estado foi estimado, não medido; os
-números e como medi-los estão no plano. O firmware compila para as duas
-placas, mas esta versão ainda não foi gravada nem testada num aparelho.
+números e como medi-los estão no plano. A 0.2 foi gravada e usada numa
+1.75C; a 0.3 compila para as duas placas e passa no simulador, mas ainda não
+foi gravada num aparelho.
 
 ### Se der errado
 
@@ -155,7 +166,8 @@ placas, mas esta versão ainda não foi gravada nem testada num aparelho.
 | "Assinatura Ordo+ vencida" | A API respondeu `403 PREMIUM_REQUIRED` | Renove no app; a bússola volta sozinha na próxima sincronização |
 | "Aparelho desativado" | `403 CLIENT_DISABLED` | Fale com quem mantém o Ordo |
 | Volta a pedir código | `401`: o aparelho foi desvinculado no app ou ficou 90 dias sem conectar | Vincule de novo |
-| Ponto cinza no topo | O dia na tela não é confirmado pela API há mais de 12 horas | Leve-a para perto de uma rede conhecida, ou adicione uma em Ajustes › Wi-Fi |
+| Wi-Fi apagado com o ponto vermelho | O dia na tela não é confirmado pela API há mais de 12 horas | Leve-a para perto de uma rede conhecida, ou adicione uma em Ajustes › Wi-Fi |
+| Wi-Fi apagado, ponto cinza | Nenhuma rede guardada, ou a última tentativa não achou nenhuma | Ajustes › Wi-Fi |
 | Data em vez de hora | Ainda não sincronizou desde que foi ligada | Sincronize: Ajustes › Sincronizar agora |
 | Não acorda | Bateria no fim, ou desligada pelo PWR | Ligue no cabo; aperte PWR |
 
@@ -185,6 +197,7 @@ mesmas fontes e o mesmo código de `src/ui` que vai para a placa.
 cd compass
 pio pkg install -e amoled175c   # uma vez: baixa o LVGL e o ArduinoJson
 make -C sim shots               # PNGs em sim/out/
+make -C sim movie               # sim/out/ordo.gif: um passeio pelas telas, com as transições
 make -C sim check               # toca em todos os controles com verificação de memória
 make -C sim test                # relógio, agenda de acordar, lembretes e o dia sem rede
 ```

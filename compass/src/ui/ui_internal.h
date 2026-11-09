@@ -39,6 +39,17 @@ struct State {
   uint16_t beads = 0;
   bool silenceRunning = false;
   uint32_t silenceRemaining = 0;
+
+  // Screen changes (see ui::brightnessScale).
+  uint8_t fade = 255;
+  bool dipping = false;
+  std::function<void()> pendingChange;
+  bool risePending = false;
+  bool shownOnce = false;
+  // True while the screen being built is one the owner just navigated to:
+  // its entrance (the marker finding today, the dots arriving) plays. A
+  // rebuild because the minute changed does not replay it.
+  bool entering = false;
 };
 
 extern State S;
@@ -50,6 +61,7 @@ void clear(lv_obj_t* scr);
 lv_obj_t* text(lv_obj_t* parent, const char* str, const lv_font_t* font, lv_color_t color, int32_t y,
                int32_t letterSpacing = 0, int32_t width = 386);
 lv_obj_t* dot(lv_obj_t* parent, int32_t size, lv_color_t fill, lv_color_t border, int32_t borderWidth);
+void polarPoint(float radius, float fraction, int32_t& x, int32_t& y);
 void placePolar(lv_obj_t* obj, float radius, float fraction);
 lv_obj_t* ringArc(lv_obj_t* parent, int32_t diameter, int32_t width, float from, float to, lv_color_t color,
                   lv_opa_t opa = LV_OPA_COVER);
@@ -57,7 +69,21 @@ lv_obj_t* pill(lv_obj_t* parent, const char* label, bool selected, lv_event_cb_t
                lv_color_t accent = theme::gold());
 // Breathes an object's opacity between two values, for "this is next".
 void breathe(lv_obj_t* obj, lv_opa_t low, lv_anim_exec_xcb_t exec);
-void statusMarkers(lv_obj_t* scr);
+// Entrances. They play only on a screen the owner just navigated to, and only
+// with animations on; otherwise these do nothing and the object is simply
+// there. `delayMs` staggers the members of a group.
+bool entrance();
+void fadeIn(lv_obj_t* obj, uint32_t delayMs, uint32_t ms = 220);
+void riseIn(lv_obj_t* obj, uint32_t delayMs, int32_t from = 12);
+// A piece of ring (see ringArc) that draws itself from `from` to `to`. Only
+// the stretch added at each step is repainted, which a fade of the whole arc
+// (as wide as the glass) would not manage.
+void sweepIn(lv_obj_t* arc, float from, float to, uint32_t delayMs, uint32_t ms = 320);
+// A figure that counts up to its value.
+void countUp(lv_obj_t* label, int value, uint32_t delayMs);
+// A quick blink of something that just changed under a finger.
+void pulse(lv_obj_t* obj);
+void statusMarkers(lv_obj_t* scr, int32_t y);
 void pageDots(lv_obj_t* scr, Page page);
 // A small "‹ voltar" at the top of tools and settings.
 void backChip(lv_obj_t* scr);
@@ -75,7 +101,17 @@ String clockText(int minuteOfDay);
 lv_color_t accentOf(const model::Today& day);
 
 // ---- navigation (ui_core.cpp)
+// Runs `change` (which builds and loads a screen) behind a dip to black, or
+// at once when animations are off. The newest change wins if two arrive
+// during the same dip.
+void transition(std::function<void()> change);
+// For what interrupts (a notice): `haltTransition` stops a change where it
+// stands, light included; `revealNow` then paints whatever was loaded while
+// the glass is still dim and brings the light back at once.
+void haltTransition();
+void revealNow();
 void showPage(Page page);
+Page homePage();
 void goBack();
 void rebuildVisible();
 
@@ -89,6 +125,7 @@ void buildMenu(lv_obj_t* scr);      // ui_tools.cpp
 void openBeads();
 void openSilence();
 void openTorch();
+void refreshSilence();
 void beadsCountOne();
 void beadsReset();
 void openSettings();                // ui_settings.cpp

@@ -23,7 +23,7 @@ struct Prefs {
   uint8_t screenSeconds = 15;  // 10, 15, 30, 60
   uint8_t brightness = 1;      // 0 low, 1 medium, 2 high
   bool nightDim = true;        // dimmer between 22h and 6h
-  uint8_t homeFace = 0;        // 0 Agora, 1 Bússola
+  uint8_t homeFace = 0;        // the screen a wake opens on: 0 Agora, 1 Bússola, 2 Leituras, 3 Ofícios, 4 Semana
   bool touchWakes = false;     // off: only the buttons wake the screen
   bool deskAlwaysOn = true;    // on USB power the screen stays on
   bool sound = true;
@@ -32,6 +32,7 @@ struct Prefs {
   int16_t reminder[4] = {-1, -1, -1, -1};  // minute of the day per office, -1: off
   uint8_t syncHours = 4;       // 0: only when woken; else every 2, 4, 6 or 12 hours
   uint8_t beadsMode = 0;       // 0 Anglican rosary (33), 1 rope of 33, 2 of 50, 3 of 100
+  bool animations = true;      // screens change through a short dip; faces play an entrance
 };
 
 // What changes by itself: the clock, the battery, the radio.
@@ -43,6 +44,9 @@ struct Status {
   bool onUsb = false;
   bool syncing = false;
   bool linked = false;
+  // The Wi-Fi mark: -1 no network set up; 0 the last try found none; 1 to 3
+  // the signal of the last one joined.
+  int wifiBars = -1;
   // Minutes since the day on screen was confirmed by the API; UINT32_MAX: never.
   uint32_t syncedMinutesAgo = UINT32_MAX;
 };
@@ -73,6 +77,10 @@ struct Actions {
   // Starts a time of silence of that many minutes; 0 ends the one running.
   std::function<void(int minutes)> silence;
   std::function<Diagnostics()> diagnostics;
+  // The dip of a screen change moved (see brightnessScale): set the panel
+  // now, not at the controller's next pass, so that a screen is never
+  // swapped with the light on.
+  std::function<void()> brightnessMoved;
 };
 
 // Creates the screens. Call once after the display is up.
@@ -126,6 +134,15 @@ enum class Swipe { Up, Down, Left, Right };
 bool onSwipe(Swipe dir);
 void onBootPress();
 void onBootLongPress();
+
+// Screen changes dip through black: the panel's own brightness does the
+// fading, which is smooth, while the slow part (redrawing 466 x 466 pixels)
+// happens in the dark. This is the factor, 0..255, the controller multiplies
+// its brightness by.
+uint8_t brightnessScale();
+// True while such a change is under way. Anything that blocks for a while (the
+// bell) waits for it to end, or the glass would freeze half lit.
+bool changingScreen();
 
 // What the screen on show asks of the power policy.
 struct PowerHint {

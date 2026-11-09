@@ -40,6 +40,7 @@ struct RtcState {
   char ssid[33];
   uint8_t bssid[6];
   uint8_t channel;
+  int8_t rssi;              // of the network last joined, dBm; 0: none yet
 
   // The screens.
   uint16_t beads;

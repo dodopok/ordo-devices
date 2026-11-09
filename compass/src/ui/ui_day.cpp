@@ -5,11 +5,13 @@
 namespace ui::detail {
 namespace {
 
-void readingRow(lv_obj_t* parent, const char* label, const String& reference, int32_t y) {
-  text(parent, upper(label).c_str(), theme::tiny(), theme::dim(), y, 2, 300);
+void readingRow(lv_obj_t* parent, const char* label, const String& reference, int32_t y, uint32_t delayMs) {
+  lv_obj_t* caption = text(parent, upper(label).c_str(), theme::tiny(), theme::dim(), y, 2, 300);
   lv_obj_t* ref = text(parent, reference.c_str(), theme::reading(), theme::fg(), y + 20, 0, 340);
   lv_label_set_long_mode(ref, LV_LABEL_LONG_MODE_DOTS);
   lv_obj_set_height(ref, 30);
+  riseIn(caption, delayMs);
+  riseIn(ref, delayMs);
 }
 
 }  // namespace
@@ -65,9 +67,11 @@ void buildReadings(lv_obj_t* scr) {
   const int32_t rowHeight = 58;
   int32_t yPos = 233 - (static_cast<int32_t>(rows.size()) * rowHeight) / 2 + 12;
   if (yPos < 122) yPos = 122;
+  uint32_t delayMs = 0;
   for (const auto& row : rows) {
-    readingRow(scr, row.label, row.ref, yPos);
+    readingRow(scr, row.label, row.ref, yPos, delayMs);
     yPos += rowHeight;
+    delayMs += 70;
   }
 }
 
@@ -78,16 +82,26 @@ void buildOffices(lv_obj_t* scr) {
 
   for (int i = 0; i < 4; i++) {
     const float gap = 0.02f;
+    const float from = i * 0.25f + gap;
+    const float to = (i + 1) * 0.25f - gap;
     const bool done = t.officesKnown && t.offices[i].done;
-    lv_obj_t* arc = ringArc(scr, 400, 22, i * 0.25f + gap, (i + 1) * 0.25f - gap,
-                            done ? (allDone ? theme::gold() : theme::green()) : lv_color_hex(0x2A2D33));
+    const bool calling = !done && i == next && t.officesKnown;
+    lv_obj_t* arc = ringArc(scr, 400, 22, from, to, done ? (allDone ? theme::gold() : theme::green()) : lv_color_hex(0x2A2D33));
     lv_obj_set_style_arc_rounded(arc, true, LV_PART_MAIN);
-    if (!done && i == next && t.officesKnown) {
+    if (calling) {
+      // The office the hour calls for: its quarter in a quiet green, and a
+      // bead on it that breathes. (Breathing the quarter itself would repaint
+      // the whole glass thirty times a second.)
       lv_obj_set_style_arc_color(arc, theme::green(), LV_PART_MAIN);
-      breathe(arc, LV_OPA_30, [](void* obj, int32_t v) {
-        lv_obj_set_style_arc_opa(static_cast<lv_obj_t*>(obj), static_cast<lv_opa_t>(v), LV_PART_MAIN);
+      lv_obj_set_style_arc_opa(arc, LV_OPA_40, LV_PART_MAIN);
+      lv_obj_t* bead = dot(scr, 12, theme::fg(), theme::bg(), 0);
+      placePolar(bead, 189.0f, (from + to) / 2.0f);
+      breathe(bead, LV_OPA_20, [](void* obj, int32_t v) {
+        lv_obj_set_style_opa(static_cast<lv_obj_t*>(obj), static_cast<lv_opa_t>(v), 0);
       });
     }
+    // The four quarters of the day close the circle one after the other.
+    sweepIn(arc, from, to, static_cast<uint32_t>(i) * 120);
     lv_obj_t* name = text(scr, upper(officeName(i)).c_str(), theme::tiny(), done ? theme::fg() : theme::dim(), 0, 2, 120);
     placePolar(name, 138.0f, i * 0.25f + 0.125f);
   }
@@ -102,7 +116,8 @@ void buildOffices(lv_obj_t* scr) {
   }
   char streak[16];
   snprintf(streak, sizeof(streak), "%d", t.streakCurrent);
-  text(scr, streak, theme::display(), theme::fg(), 172, 0, 200);
+  lv_obj_t* figure = text(scr, streak, theme::display(), theme::fg(), 172, 0, 200);
+  countUp(figure, t.streakCurrent, 200);
   text(scr, tr("DIAS SEGUIDOS", "DAY STREAK", "DÍAS SEGUIDOS"), theme::tiny(), theme::gold(), 232, 3, 220);
   if (allDone) {
     text(scr, tr("dia completo", "day complete", "día completo"), theme::label(), theme::dim(), 262, 0, 220);
@@ -144,6 +159,10 @@ void buildWeek(lv_obj_t* scr) {
       lv_label_set_long_mode(name, LV_LABEL_LONG_MODE_DOTS);
       lv_obj_set_size(name, 236, 26);
       lv_obj_set_pos(name, left + 74, y);
+      const uint32_t delayMs = static_cast<uint32_t>(i) * 55;
+      fadeIn(d, delayMs);
+      riseIn(wd, delayMs);
+      riseIn(name, delayMs);
       y += rowHeight;
     }
   }

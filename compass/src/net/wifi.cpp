@@ -44,6 +44,8 @@ void rememberAccessPoint() {
   const uint8_t* bssid = WiFi.BSSID();
   if (bssid) memcpy(r.bssid, bssid, 6);
   r.channel = static_cast<uint8_t>(WiFi.channel());
+  const int rssi = WiFi.RSSI();
+  r.rssi = static_cast<int8_t>(rssi < -127 ? -127 : (rssi >= 0 ? -1 : rssi));
 }
 
 void startScan() {

@@ -24,6 +24,7 @@ leem a API: a única rota que o token de aparelho abre é
    `make -C compass/sim check` (toca em todos os controles com verificação de
    memória) e olhe o resultado de `make -C compass/sim shots`. Mudou o
    relógio, a agenda de acordar ou o modelo? `make -C compass/sim test`.
+   Mudou uma animação? `make -C compass/sim movie` e olhe o GIF.
 3. **Nada de segredo no código nem no log.** O token do aparelho mora no NVS
    e não é impresso. `ORDO_TLS_INSECURE` é só para desenvolvimento e nunca é o
    padrão de um ambiente.
@@ -51,6 +52,15 @@ leem a API: a única rota que o token de aparelho abre é
    `version` no manifesto e em `store/store.json`, com entrada no `changelog`.
 9. **Sem hardware aqui.** Quem não tem a placa à mão diz isso explicitamente
    ao entregar: "compilou, não foi gravado nem testado na placa".
+10. **Animação mexe em pouco vidro.** Pintar os 466 x 466 pixels leva um
+    décimo de segundo; o que repinta a tela inteira a cada passo engasga e
+    come os toques. Troca de tela passa por `ui::detail::transition` (escurece
+    o painel, pinta no escuro, clareia). Entradas usam `fadeIn`, `riseIn`,
+    `sweepIn` e `countUp` em objetos pequenos e só tocam com
+    `Prefs::animations`. Nada que "respira" pode ter o tamanho do vidro: um
+    anel inteiro mudando de opacidade invalida o quadrado todo. E nada
+    bloqueia o laço com uma troca em curso: antes do sino,
+    `Controller::settleScreen()`; a consulta à API roda em tarefa própria.
 
 ## Fluxo de trabalho
 

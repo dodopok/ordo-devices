@@ -3,6 +3,9 @@
 #
 #   pio pkg install -e amoled175c     (once: fetches LVGL and ArduinoJson)
 #   make -C sim shots                 (PNGs in sim/out/)
+#   make -C sim movie                 (sim/out/ordo.gif: the dips and entrances)
+#   make -C sim check                 (pokes every control under ASAN)
+#   make -C sim test                  (the clock and wake arithmetic)
 #
 # Needs gcc, g++ and python3 with Pillow.
 
@@ -28,11 +31,19 @@ APP_OBJ  := $(patsubst %.cpp,$(BUILD)/app/%.o,$(notdir $(APP_SRC)))
 
 vpath %.cpp ../src/ui ../src/model .
 
-.PHONY: shots check test clean
+.PHONY: shots movie check test clean
 shots: $(BUILD)/sim
 	@mkdir -p $(OUT)
 	@./$(BUILD)/sim $(OUT) sample_today.json 2>/dev/null
 	@python3 to_png.py $(OUT)
+
+# The screens in motion: every step of a walk through them, with the panel's
+# light as the firmware would set it.
+movie: $(BUILD)/sim
+	@mkdir -p $(OUT)/movie
+	@./$(BUILD)/sim $(OUT)/movie sample_today.json movie 2>/dev/null
+	@python3 to_gif.py $(OUT)/movie $(OUT)/ordo.gif
+	@rmdir $(OUT)/movie
 
 $(BUILD)/sim: $(LVGL_OBJ) $(FONT_OBJ) $(APP_OBJ)
 	@echo link $@
