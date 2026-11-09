@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bússola Ordo</title>
+<meta name="description" content="A bússola litúrgica do Ordo: o dia litúrgico num chaveiro. Aqui ela busca as suas atualizações.">
+<meta name="robots" content="noindex">
+<style>
+  :root { color-scheme: dark; --bg: #0c0d10; --ink: #e8e6e3; --muted: #a3a3a0; --gold: #e8c968; --line: #262b33; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.6 Georgia, "Iowan Old Style", serif; }
+  main { max-width: 38rem; margin: 0 auto; padding: 12vh 1.25rem 4rem; }
+  .ring { width: 4.5rem; height: 4.5rem; border-radius: 50%; border: 3px solid var(--gold); position: relative; margin-bottom: 2rem; }
+  .ring::after { content: ""; position: absolute; width: .7rem; height: .7rem; border-radius: 50%; background: var(--gold); top: -.5rem; left: 1.7rem; }
+  h1 { font-weight: 400; font-size: 2.2rem; line-height: 1.1; margin: 0 0 .75rem; }
+  p { margin: 0 0 1rem; color: var(--muted); }
+  p strong { color: var(--ink); font-weight: 400; }
+  dl { border-top: 1px solid var(--line); margin: 2rem 0 0; padding-top: 1.25rem; display: grid; grid-template-columns: max-content 1fr; gap: .4rem 1.25rem; font-family: system-ui, sans-serif; font-size: .95rem; }
+  dt { color: var(--muted); }
+  dd { margin: 0; overflow-wrap: anywhere; }
+  a { color: var(--gold); }
+</style>
+</head>
+<body>
+<main>
+  <div class="ring" aria-hidden="true"></div>
+  <h1>Bússola Ordo</h1>
+  <p>O dia litúrgico num chaveiro: a cor do tempo, a comemoração do dia, as leituras e os ofícios que você já orou, vindos da sua conta do <strong>Ordo</strong>.</p>
+  <p>Este endereço é da própria bússola. É aqui que ela procura uma versão nova do firmware e busca a foto e o texto da comemoração do dia. Não há nada para instalar por esta página.</p>
+  <dl>
+    <dt>Versão publicada</dt><dd id="version">…</dd>
+    <dt>Publicada em</dt><dd id="released">…</dd>
+    <dt>O que mudou</dt><dd id="notes">…</dd>
+  </dl>
+</main>
+<script>
+  fetch('/firmware/manifest.json', { cache: 'no-store' })
+    .then(function (r) { return r.json(); })
+    .then(function (m) {
+      document.getElementById('version').textContent = m.version || '—';
+      document.getElementById('released').textContent = m.released || '—';
+      document.getElementById('notes').textContent = (m.notes && m.notes.pt) || '—';
+    })
+    .catch(function () {
+      ['version', 'released', 'notes'].forEach(function (id) { document.getElementById(id).textContent = '—'; });
+    });
+</script>
+</body>
+</html>

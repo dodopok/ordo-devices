@@ -1,0 +1,12 @@
+{
+  "name": "ordo-bussola-site",
+  "private": true,
+  "description": "bussola.oficio.app: firmware updates for the Ordo compass and the gateway that hands it the celebration's picture and text from the CMS.",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "sharp": "^0.33.5"
+  }
+}
