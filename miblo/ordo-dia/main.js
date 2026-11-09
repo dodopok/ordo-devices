@@ -37,6 +37,8 @@ const T = {
     title: 'Oração da Manhã', titleEvening: 'Oração da Tarde',
     remind: (streak) => (streak > 1 ? `Ainda não orada hoje. ${streak} dias seguidos: não deixe passar.` : 'Ainda não orada hoje. Abra o Ordo quando puder.'),
     noApi: 'Sem resposta da API', noApiHint: 'tentando de novo em instantes',
+    unknownClient: 'App não cadastrado na API', unknownClientHint: 'o cliente ordo-miblo não existe nesta API do Ordo',
+    clientDisabled: 'App desativado', clientDisabledHint: 'este app foi desativado na API do Ordo',
     denied: 'Não foi possível vincular', deniedHint: 'confira no app se a conta tem Ordo+ e menos de 5 aparelhos',
     noStore: 'o vínculo será pedido de novo quando o Hub reiniciar',
   },
@@ -44,6 +46,8 @@ const T = {
     title: 'Morning Prayer', titleEvening: 'Evening Prayer',
     remind: (streak) => (streak > 1 ? `Not prayed yet today. ${streak} days in a row: keep it going.` : 'Not prayed yet today. Open Ordo when you can.'),
     noApi: 'No answer from the API', noApiHint: 'trying again shortly',
+    unknownClient: 'App not registered on the API', unknownClientHint: 'the ordo-miblo client does not exist on this Ordo API',
+    clientDisabled: 'App disabled', clientDisabledHint: 'this app was disabled on the Ordo API',
     denied: 'Could not link', deniedHint: 'check in the app that the account has Ordo+ and fewer than 5 devices',
     noStore: 'the link will be asked again when the Hub restarts',
   },
@@ -148,8 +152,11 @@ async function stepLinking(ctx, st) {
         return linkData(ctx, st);
       }
       // 400 UNKNOWN_DEVICE_CLIENT or 403 CLIENT_DISABLED: nothing this app can do but say so.
-      st.linkNote = t.noApi;
-      st.linkHint = r.json?.code ? String(r.json.code) : t.noApiHint;
+      const code = String(r.json?.code ?? '');
+      if (code === 'UNKNOWN_DEVICE_CLIENT') { st.linkNote = t.unknownClient; st.linkHint = t.unknownClientHint; }
+      else if (code === 'CLIENT_DISABLED') { st.linkNote = t.clientDisabled; st.linkHint = t.clientDisabledHint; }
+      else { st.linkNote = t.noApi; st.linkHint = code ? `${t.noApiHint} (${r.status} ${code})` : `${t.noApiHint} (${r.status})`; }
+      ctx.log?.(`link code not obtained: ${r.status} ${code}`);
     } catch {
       st.linkNote = t.noApi;
       st.linkHint = t.noApiHint;
