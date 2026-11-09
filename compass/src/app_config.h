@@ -32,6 +32,13 @@ constexpr uint32_t kRateLimitedSeconds = 900;
 constexpr uint8_t kBrightnessNormal = 200;
 constexpr uint8_t kBrightnessDim = 24;
 constexpr uint32_t kDimAfterMs = 60 * 1000;
+// Choices offered on the settings screen for the standby timeout, in
+// minutes; 0 means the screen never switches off by itself.
+constexpr uint8_t kStandbyChoices[] = {0, 2, 5, 10, 30};
+constexpr uint8_t kStandbyDefaultMinutes = 10;
+// CPU clock while the screen is off; Wi-Fi needs at least 80 MHz.
+constexpr uint32_t kStandbyCpuMhz = 80;
+constexpr uint32_t kActiveCpuMhz = 240;
 
 // Holding BOOT this long wipes Wi-Fi credentials and the device token.
 constexpr uint32_t kFactoryResetHoldMs = 10 * 1000;

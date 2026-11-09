@@ -14,6 +14,11 @@ bool displayInit();
 // has no backlight; black pixels cost nothing, dim text costs little.
 void displaySetBrightness(uint8_t level);
 
+// Panel sleep: the AMOLED stops driving pixels and the controller idles.
+// Far cheaper than brightness 0, which keeps the panel scanning black.
+void displayOff();
+void displayOn(uint8_t brightness);
+
 lv_display_t* display();
 
 }  // namespace board

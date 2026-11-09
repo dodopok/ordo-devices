@@ -65,4 +65,6 @@ bool touchInit() {
 
 lv_indev_t* touchIndev() { return indev; }
 
+bool touchActive() { return digitalRead(PIN_TP_INT) == LOW; }
+
 }  // namespace board

@@ -36,6 +36,8 @@ class Controller {
   void scheduleRetry();
   void handleButtons();
   void handleBrightness();
+  void enterStandby();
+  void wake();
   void handleBattery();
   void showCachedDay();
   void factoryReset();
@@ -62,6 +64,7 @@ class Controller {
   uint32_t bootHeldSince_ = 0;
   uint32_t lastBatteryAt_ = 0;
   bool dimmed_ = false;
+  bool standby_ = false;
   bool wifiNoticeShown_ = false;
   bool portalNoticeShown_ = false;
 };

@@ -33,6 +33,11 @@ void Controller::begin() {
   }
 
   ui::init();
+  ui::setStandbyMinutes(settings_.standbyMinutes());
+  ui::setSettingsHandlers({
+      [this](uint8_t minutes) { settings_.setStandbyMinutes(minutes); },
+      [this]() { enterStandby(); },
+  });
   ui::showSplash();
   lv_timer_handler();
   board::displaySetBrightness(cfg::kBrightnessNormal);
@@ -44,7 +49,13 @@ void Controller::begin() {
 
 void Controller::loop() {
   net::wifiLoop();
-  lv_timer_handler();
+  if (standby_) {
+    // Screen off: no rendering, but the network keeps the day fresh so
+    // waking shows the right thing at once.
+    if (board::touchActive()) wake();
+  } else {
+    lv_timer_handler();
+  }
   handleButtons();
   handleBrightness();
   handleBattery();
@@ -271,19 +282,33 @@ void Controller::showCachedDay() {
 
 void Controller::handleButtons() {
   if (board::powerButtonPressedEdge()) {
-    ui::goHome();
-    lv_display_trigger_activity(nullptr);
+    // PWR is the screen switch: off when on, on when off.
+    if (standby_) wake();
+    else enterStandby();
   }
   if (board::bootButtonHeld()) {
-    if (bootHeldSince_ == 0) bootHeldSince_ = millis();
-    else if (millis() - bootHeldSince_ >= cfg::kFactoryResetHoldMs) factoryReset();
+    if (bootHeldSince_ == 0) {
+      bootHeldSince_ = millis();
+      if (standby_) wake();
+    } else if (millis() - bootHeldSince_ >= cfg::kFactoryResetHoldMs) {
+      factoryReset();
+    }
   } else {
     bootHeldSince_ = 0;
   }
 }
 
 void Controller::handleBrightness() {
-  const bool idle = lv_display_get_inactive_time(nullptr) > cfg::kDimAfterMs;
+  if (standby_) return;
+  const uint32_t idleMs = lv_display_get_inactive_time(nullptr);
+  const uint8_t standbyMinutes = settings_.standbyMinutes();
+
+  // The link code and the Wi-Fi notice stay lit: someone is reading them.
+  if (standbyMinutes > 0 && ui::showingDay() && idleMs > standbyMinutes * 60UL * 1000UL) {
+    enterStandby();
+    return;
+  }
+  const bool idle = idleMs > cfg::kDimAfterMs;
   if (idle && !dimmed_) {
     board::displaySetBrightness(cfg::kBrightnessDim);
     dimmed_ = true;
@@ -291,6 +316,27 @@ void Controller::handleBrightness() {
     board::displaySetBrightness(cfg::kBrightnessNormal);
     dimmed_ = false;
   }
+}
+
+void Controller::enterStandby() {
+  if (standby_) return;
+  standby_ = true;
+  dimmed_ = false;
+  board::displayOff();
+  setCpuFrequencyMhz(cfg::kStandbyCpuMhz);
+  Serial.println("[ordo] standby");
+}
+
+void Controller::wake() {
+  if (!standby_) return;
+  standby_ = false;
+  setCpuFrequencyMhz(cfg::kActiveCpuMhz);
+  lv_display_trigger_activity(nullptr);
+  // Everything LVGL skipped while the panel slept is drawn before it lights up.
+  lv_obj_invalidate(lv_screen_active());
+  lv_timer_handler();
+  board::displayOn(cfg::kBrightnessNormal);
+  Serial.println("[ordo] wake");
 }
 
 void Controller::handleBattery() {

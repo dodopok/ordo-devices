@@ -21,6 +21,12 @@ void Settings::begin() {
   name_ = readString("name");
   etag_ = readString("etag");
   payload_ = readString("payload");
+  standbyMinutes_ = prefs.getUChar("standby", 10);
+}
+
+void Settings::setStandbyMinutes(uint8_t minutes) {
+  standbyMinutes_ = minutes;
+  prefs.putUChar("standby", minutes);
 }
 
 void Settings::saveLink(const String& token, const String& name) {

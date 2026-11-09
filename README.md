@@ -64,8 +64,22 @@ O GitHub Actions compila os dois ambientes a cada push e anexa `firmware.bin`,
 3. Em alguns segundos a bússola recebe o token dela e passa a mostrar o dia.
 
 O token fica no NVS do ESP32 e nunca aparece na tela nem no log. Segurar
-**BOOT** por 10 segundos apaga Wi-Fi e vínculo e reinicia. O botão **PWR**
-volta para a bússola e acorda a tela.
+**BOOT** por 10 segundos apaga Wi-Fi e vínculo e reinicia.
+
+### Telas e botões
+
+Arrastar para cima ou para baixo percorre bússola → leituras → ofícios →
+ajustes. O botão **PWR** desliga a tela; apertar de novo, ou tocar no vidro,
+acende.
+
+### Bateria e modo de espera
+
+A tela desliga sozinha depois de um tempo sem toque (padrão: 10 minutos) e o
+processador baixa para 80 MHz; o Wi-Fi continua ligado para o dia ficar
+atualizado e a tela acender já certa. O tempo é escolhido na tela de ajustes
+da própria bússola: nunca, 2, 5, 10 ou 30 minutos. Antes de desligar, um
+minuto sem toque já baixa o brilho. Na AMOLED, pixels pretos não gastam, por
+isso o fundo é preto e só a cor litúrgica acende.
 
 ### Se der errado
 

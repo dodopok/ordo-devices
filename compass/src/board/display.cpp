@@ -75,6 +75,18 @@ void displaySetBrightness(uint8_t level) {
   if (gfx) gfx->setBrightness(level);
 }
 
+void displayOff() {
+  if (!gfx) return;
+  gfx->setBrightness(0);
+  gfx->displayOff();
+}
+
+void displayOn(uint8_t brightness) {
+  if (!gfx) return;
+  gfx->displayOn();
+  gfx->setBrightness(brightness);
+}
+
 lv_display_t* display() { return disp; }
 
 }  // namespace board

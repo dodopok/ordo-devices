@@ -2,6 +2,8 @@
 
 #include <math.h>
 
+#include "../app_config.h"
+#include "board_pins.h"
 #include "theme.h"
 
 namespace ui {
@@ -18,7 +20,10 @@ bool batteryCharging = false;
 lv_obj_t* screenCompass = nullptr;
 lv_obj_t* screenReadings = nullptr;
 lv_obj_t* screenOffices = nullptr;
+lv_obj_t* screenSettings = nullptr;
 lv_obj_t* screenNotice = nullptr;
+SettingsHandlers handlers;
+uint8_t standbyMinutes = cfg::kStandbyDefaultMinutes;
 lv_obj_t* noticeTitle = nullptr;
 lv_obj_t* noticeText = nullptr;
 lv_obj_t* noticeSpinner = nullptr;
@@ -158,27 +163,30 @@ const char* slotName(const String& slot) {
 void clearChildren(lv_obj_t* scr) { lv_obj_clean(scr); }
 
 void switchTo(Screen target, lv_screen_load_anim_t anim);
+void buildSettings();
 
 void gestureCb(lv_event_t* e) {
   const lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_active());
+  // Compass -> Readings -> Offices -> Settings -> Compass, and back.
+  static const Screen order[] = {Screen::Compass, Screen::Readings, Screen::Offices, Screen::Settings};
+  int index = 0;
+  for (int i = 0; i < 4; i++) if (order[i] == current) index = i;
   if (dir == LV_DIR_TOP || dir == LV_DIR_LEFT) {
-    switch (current) {
-      case Screen::Compass: switchTo(Screen::Readings, LV_SCREEN_LOAD_ANIM_MOVE_TOP); break;
-      case Screen::Readings: switchTo(Screen::Offices, LV_SCREEN_LOAD_ANIM_MOVE_TOP); break;
-      case Screen::Offices: switchTo(Screen::Compass, LV_SCREEN_LOAD_ANIM_MOVE_TOP); break;
-    }
+    switchTo(order[(index + 1) % 4], LV_SCREEN_LOAD_ANIM_MOVE_TOP);
   } else if (dir == LV_DIR_BOTTOM || dir == LV_DIR_RIGHT) {
-    switch (current) {
-      case Screen::Compass: switchTo(Screen::Offices, LV_SCREEN_LOAD_ANIM_MOVE_BOTTOM); break;
-      case Screen::Readings: switchTo(Screen::Compass, LV_SCREEN_LOAD_ANIM_MOVE_BOTTOM); break;
-      case Screen::Offices: switchTo(Screen::Readings, LV_SCREEN_LOAD_ANIM_MOVE_BOTTOM); break;
-    }
+    switchTo(order[(index + 3) % 4], LV_SCREEN_LOAD_ANIM_MOVE_BOTTOM);
   }
 }
 
 void switchTo(Screen target, lv_screen_load_anim_t anim) {
   current = target;
-  lv_obj_t* scr = target == Screen::Compass ? screenCompass : target == Screen::Readings ? screenReadings : screenOffices;
+  lv_obj_t* scr = screenCompass;
+  switch (target) {
+    case Screen::Compass: scr = screenCompass; break;
+    case Screen::Readings: scr = screenReadings; break;
+    case Screen::Offices: scr = screenOffices; break;
+    case Screen::Settings: scr = screenSettings; break;
+  }
   lv_screen_load_anim(scr, anim, 220, 0, false);
 }
 
@@ -366,6 +374,71 @@ void buildOffices() {
   statusMarkers(screenOffices);
 }
 
+// --------------------------------------------------------------- settings
+
+void standbyChoiceCb(lv_event_t* e) {
+  const uint8_t minutes = static_cast<uint8_t>(reinterpret_cast<uintptr_t>(lv_event_get_user_data(e)));
+  standbyMinutes = minutes;
+  if (handlers.onStandbyMinutes) handlers.onStandbyMinutes(minutes);
+  buildSettings();
+}
+
+void sleepNowCb(lv_event_t*) {
+  if (handlers.onSleepNow) handlers.onSleepNow();
+}
+
+lv_obj_t* pill(lv_obj_t* parent, const char* label, bool selected, lv_event_cb_t cb, void* user) {
+  lv_obj_t* btn = lv_button_create(parent);
+  lv_obj_set_size(btn, LV_SIZE_CONTENT, 40);
+  lv_obj_set_style_radius(btn, 20, 0);
+  lv_obj_set_style_pad_hor(btn, 16, 0);
+  lv_obj_set_style_bg_color(btn, selected ? theme::gold() : theme::bg(), 0);
+  lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_color(btn, selected ? theme::gold() : theme::dim(), 0);
+  lv_obj_set_style_border_width(btn, 2, 0);
+  lv_obj_set_style_shadow_width(btn, 0, 0);
+  lv_obj_t* l = lv_label_create(btn);
+  lv_label_set_text(l, label);
+  lv_obj_set_style_text_font(l, theme::small(), 0);
+  lv_obj_set_style_text_color(l, selected ? theme::bg() : theme::fg(), 0);
+  lv_obj_center(l);
+  lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, user);
+  return btn;
+}
+
+void buildSettings() {
+  clearChildren(screenSettings);
+  text(screenSettings, tr("AJUSTES", "SETTINGS", "AJUSTES"), theme::small(), theme::dim(), 84, 3);
+  text(screenSettings, tr("Tela desliga após", "Screen off after", "Pantalla se apaga tras"), theme::body(), theme::fg(), 130);
+
+  lv_obj_t* row = lv_obj_create(screenSettings);
+  lv_obj_remove_style_all(row);
+  lv_obj_set_size(row, 400, 100);
+  lv_obj_align(row, LV_ALIGN_TOP_MID, 0, 164);
+  lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW_WRAP);
+  lv_obj_set_flex_align(row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_column(row, 10, 0);
+  lv_obj_set_style_pad_row(row, 10, 0);
+  for (uint8_t minutes : cfg::kStandbyChoices) {
+    char label[12];
+    if (minutes == 0) snprintf(label, sizeof(label), "%s", tr("Nunca", "Never", "Nunca"));
+    else snprintf(label, sizeof(label), "%u min", minutes);
+    pill(row, label, minutes == standbyMinutes, standbyChoiceCb, reinterpret_cast<void*>(static_cast<uintptr_t>(minutes)));
+  }
+
+  lv_obj_t* sleepBtn = pill(screenSettings, tr(LV_SYMBOL_POWER "  Desligar tela agora", LV_SYMBOL_POWER "  Screen off now",
+                                                 LV_SYMBOL_POWER "  Apagar pantalla ahora"),
+                            false, sleepNowCb, nullptr);
+  lv_obj_align(sleepBtn, LV_ALIGN_TOP_MID, 0, 290);
+  text(screenSettings, tr("Toque ou PWR acordam a tela", "Touch or PWR wakes the screen", "Toque o PWR despierta la pantalla"),
+       theme::tiny(), theme::dim(), 344);
+
+  char footer[64];
+  snprintf(footer, sizeof(footer), "v%s · %s", ORDO_FIRMWARE_VERSION, ORDO_BOARD_NAME);
+  text(screenSettings, footer, theme::tiny(), theme::dim(), 392);
+  statusMarkers(screenSettings);
+}
+
 }  // namespace
 
 // ----------------------------------------------------------------- public
@@ -374,10 +447,12 @@ void init() {
   screenCompass = blankScreen();
   screenReadings = blankScreen();
   screenOffices = blankScreen();
+  screenSettings = blankScreen();
   screenNotice = blankScreen();
-  for (lv_obj_t* scr : {screenCompass, screenReadings, screenOffices}) {
+  for (lv_obj_t* scr : {screenCompass, screenReadings, screenOffices, screenSettings}) {
     lv_obj_add_event_cb(scr, gestureCb, LV_EVENT_GESTURE, nullptr);
   }
+  buildSettings();
 }
 
 void showSplash() {
@@ -461,6 +536,7 @@ void setToday(const model::Today& today, bool offline) {
   buildCompass();
   buildReadings();
   buildOffices();
+  buildSettings();
   if (!dayShown) {
     dayShown = true;
     current = Screen::Compass;
@@ -486,5 +562,12 @@ void goHome() {
 }
 
 bool showingDay() { return dayShown; }
+
+void setSettingsHandlers(SettingsHandlers h) { handlers = h; }
+
+void setStandbyMinutes(uint8_t minutes) {
+  standbyMinutes = minutes;
+  buildSettings();
+}
 
 }  // namespace ui

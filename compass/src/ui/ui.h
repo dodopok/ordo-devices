@@ -3,11 +3,19 @@
 #include <Arduino.h>
 #include <lvgl.h>
 
+#include <functional>
+
 #include "../model/today.h"
 
 namespace ui {
 
-enum class Screen { Compass, Readings, Offices };
+enum class Screen { Compass, Readings, Offices, Settings };
+
+// What the settings screen can ask the controller to do.
+struct SettingsHandlers {
+  std::function<void(uint8_t minutes)> onStandbyMinutes;
+  std::function<void()> onSleepNow;
+};
 
 // Creates the screens. Call once after the display and touch are up.
 void init();
@@ -25,8 +33,12 @@ void setLinkCountdown(uint32_t secondsLeft);
 void setToday(const model::Today& today, bool offline);
 void setBattery(int percent, bool charging);
 
-// Brings the compass face back (PWR button, wake).
+// Brings the compass face back.
 void goHome();
 bool showingDay();
+
+// Settings screen: the standby timeout the owner picked, and who to tell.
+void setSettingsHandlers(SettingsHandlers handlers);
+void setStandbyMinutes(uint8_t minutes);
 
 }  // namespace ui

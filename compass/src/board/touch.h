@@ -10,4 +10,8 @@ bool touchInit();
 
 lv_indev_t* touchIndev();
 
+// True while a finger is on the glass (the INT line is low). Used to wake
+// from standby, when LVGL is not polling the controller.
+bool touchActive();
+
 }  // namespace board

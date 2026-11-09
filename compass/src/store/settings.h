@@ -17,6 +17,9 @@ class Settings {
   String deviceName() const { return name_; }
   String etag() const { return etag_; }
   String lastPayload() const { return payload_; }
+  // Minutes without a touch before the screen switches off; 0 = never.
+  uint8_t standbyMinutes() const { return standbyMinutes_; }
+  void setStandbyMinutes(uint8_t minutes);
 
   void saveLink(const String& token, const String& name);
   void saveToday(const String& etag, const String& payload);
@@ -30,6 +33,7 @@ class Settings {
   String name_;
   String etag_;
   String payload_;
+  uint8_t standbyMinutes_ = 10;
 };
 
 }  // namespace store
