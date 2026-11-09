@@ -22,7 +22,8 @@ leem a API: a única rota que o token de aparelho abre é
    `amoled175` (`pio run -e amoled175c && pio run -e amoled175`). O CI faz o
    mesmo; não suba o que não compila nos dois. Mudou uma tela? Rode também
    `make -C compass/sim check` (toca em todos os controles com verificação de
-   memória) e olhe o resultado de `make -C compass/sim shots`.
+   memória) e olhe o resultado de `make -C compass/sim shots`. Mudou o
+   relógio, a agenda de acordar ou o modelo? `make -C compass/sim test`.
 3. **Nada de segredo no código nem no log.** O token do aparelho mora no NVS
    e não é impresso. `ORDO_TLS_INSECURE` é só para desenvolvimento e nunca é o
    padrão de um ambiente.

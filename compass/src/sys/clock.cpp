@@ -93,6 +93,17 @@ int64_t nextLocalTime(int minute) {
   return at - rtc().utcOffsetSeconds;
 }
 
+int32_t offsetFromDayEnd(int64_t utc, uint32_t dayEndsInSeconds) {
+  const int64_t localSecond = 86400 - static_cast<int64_t>(dayEndsInSeconds);
+  int64_t offset = localSecond - (utc - floorDiv(utc, 86400) * 86400);
+  while (offset > 14 * 3600) offset -= 86400;
+  while (offset < -12 * 3600) offset += 86400;
+  // Zones sit on quarter hours.
+  const int64_t quarter = 900;
+  offset = floorDiv(offset + quarter / 2, quarter) * quarter;
+  return static_cast<int32_t>(offset);
+}
+
 uint64_t sleepSecondsFor(int64_t seconds) {
   if (seconds <= 0) return 0;
   // The timer runs fast or slow by driftPpm; ask it for correspondingly

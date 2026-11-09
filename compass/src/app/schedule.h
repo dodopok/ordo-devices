@@ -1,0 +1,51 @@
+#pragma once
+
+#include <stdint.h>
+
+#include "../sys/rtc_state.h"
+
+// When to wake and what to ring: the part of the controller that decides
+// how the battery is spent while nobody is looking. Pure arithmetic on
+// purpose (no board, no clock of its own), so sim/test_logic.cpp can run it
+// through a day on a computer.
+namespace app {
+
+struct Moment {
+  int64_t raw = 0;          // seconds since power-on, through sleep
+  bool clockValid = false;  // the fields below mean something
+  int64_t utc = 0;
+  int32_t utcOffset = 0;
+};
+
+struct Plan {
+  int16_t reminder[4] = {-1, -1, -1, -1};  // minute of the day per office, -1: off
+  bool hourBell = false;                   // 6h, 12h, 18h
+  uint8_t syncHours = 4;                   // 0: never by itself
+  bool canSync = false;                    // linked, and at least one Wi-Fi network known
+};
+
+struct Due {
+  int reminder = -1;   // office index
+  int bellHour = -1;   // 6, 12 or 18
+  bool silence = false;
+};
+
+// What has come due at `now`. Marks it as rung in `rtc`, so a wake a little
+// early or late, or two looks in the same minute, cannot ring twice.
+Due takeDue(const Moment& now, const Plan& plan, sys::RtcState& rtc);
+
+// True seconds until the next thing the compass must wake for by itself;
+// 0 when there is nothing (only a button will wake it).
+int64_t secondsToNextWake(const Moment& now, const Plan& plan, const sys::RtcState& rtc);
+
+// After a sync that got no answer: how long to wait before the next try.
+// Doubles from five minutes to an hour while awake; the scheduled wakes use
+// a longer ladder, half an hour to six hours.
+int64_t retryDelay(uint8_t failures);
+int64_t backgroundRetryDelay(uint8_t failures);
+
+// Local time helpers on a Moment.
+int32_t localDay(const Moment& now);
+int minuteOfDay(const Moment& now);
+
+}  // namespace app

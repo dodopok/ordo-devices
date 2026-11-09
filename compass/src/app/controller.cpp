@@ -24,20 +24,6 @@ bool batteryFlat(const board::BatteryState& battery) {
          battery.millivolts > 2500 && battery.millivolts < cfg::kBatteryOffMillivolts;
 }
 
-// The owner's zone, worked out from an answer of an API that does not send
-// `utc_offset_seconds` yet: the payload says how long until the owner's
-// midnight, the `Date` header says what time it is in UTC.
-int32_t offsetFromDayEnd(int64_t utc, uint32_t dayEndsInSeconds) {
-  const int64_t localSecond = 86400 - static_cast<int64_t>(dayEndsInSeconds);
-  int64_t offset = localSecond - (utc % 86400);
-  while (offset > 14 * 3600) offset -= 86400;
-  while (offset < -12 * 3600) offset += 86400;
-  // Zones sit on quarter hours.
-  const int64_t quarter = 900;
-  offset = ((offset + (offset >= 0 ? quarter / 2 : -quarter / 2)) / quarter) * quarter;
-  return static_cast<int32_t>(offset);
-}
-
 ui::Swipe swipeOf(board::TouchSwipe swipe) {
   switch (swipe) {
     case board::TouchSwipe::Up: return ui::Swipe::Up;
@@ -385,13 +371,13 @@ void Controller::stepSync() {
       break;
     case net::WifiState::Connecting:
       if (millis() - syncStartedMs_ > 30000) {
-        sys::rtc().nextTryRaw = sys::rawSeconds() + cfg::kRetrySeconds;
+        syncFailed();
         finishSync();
       }
       break;
     default:
-      // No known network in range: nothing to do until the next look.
-      sys::rtc().nextTryRaw = sys::rawSeconds() + cfg::kRetrySeconds;
+      // No known network in range: nothing to do until a later look.
+      syncFailed();
       finishSync();
       break;
   }
@@ -415,7 +401,7 @@ bool Controller::syncBlocking() {
   }
   const bool connected = net::wifiConnected();
   if (connected) fetchToday();
-  else sys::rtc().nextTryRaw = sys::rawSeconds() + cfg::kRetrySeconds;
+  else syncFailed();
   net::wifiOff();
   return connected;
 }
@@ -427,6 +413,7 @@ void Controller::fetchToday() {
   // Every answer, whatever it says, carries the time.
   const bool answered = result.status != net::TodayStatus::NetworkError;
   if (answered && api_.serverTime() > 0) sys::clockSet(api_.serverTime());
+  if (answered) r.syncFailures = 0;
 
   switch (result.status) {
     case net::TodayStatus::Updated: {
@@ -440,7 +427,7 @@ void Controller::fetchToday() {
       settings_.saveToday(result.etag, result.body);
       if (parsed.hasUtcOffset) sys::setUtcOffset(parsed.utcOffsetSeconds);
       else if (parsed.dayEndsInSeconds > 0 && sys::clockValid()) {
-        sys::setUtcOffset(offsetFromDayEnd(sys::nowUtc(), parsed.dayEndsInSeconds));
+        sys::setUtcOffset(sys::offsetFromDayEnd(sys::nowUtc(), parsed.dayEndsInSeconds));
       }
       r.lastAnswerRaw = raw;
       r.nextTryRaw = 0;
@@ -493,6 +480,8 @@ void Controller::fetchToday() {
       r.nextTryRaw = raw + cfg::kRateLimitedSeconds;
       break;
     case net::TodayStatus::NetworkError:
+      syncFailed();
+      break;
     case net::TodayStatus::ServerError:
       r.nextTryRaw = raw + cfg::kRetrySeconds;
       break;
@@ -509,40 +498,31 @@ void Controller::showBlocked() {
 
 // ============================================================ time-driven
 
-Controller::Due Controller::takeDue() {
-  Due what;
-  sys::RtcState& r = sys::rtc();
-  const int64_t raw = sys::rawSeconds();
-  if (r.silenceEndsRaw != 0 && raw >= r.silenceEndsRaw) {
-    r.silenceEndsRaw = 0;
-    what.silence = true;
-  }
-  if (!sys::clockValid() || !sys::utcOffsetKnown()) return what;
+Moment Controller::moment() const {
+  Moment now;
+  now.raw = sys::rawSeconds();
+  now.clockValid = sys::clockValid() && sys::utcOffsetKnown();
+  now.utc = sys::nowUtc();
+  now.utcOffset = sys::utcOffset();
+  return now;
+}
 
-  const int32_t day = static_cast<int32_t>(sys::localDays());
-  if (r.firedDay != day) {
-    r.firedDay = day;
-    r.remindersFired = 0;
-    r.bellsFired = 0;
-  }
-  const int minute = sys::minuteOfDay();
-  for (int i = 0; i < 4; i++) {
-    const int at = prefs_.reminder[i];
-    if (at < 0 || (r.remindersFired & (1 << i)) || minute < at) continue;
-    r.remindersFired |= static_cast<uint8_t>(1 << i);
-    // More than twenty minutes late (it was switched off): let it pass.
-    if (minute - at <= 20 && what.reminder < 0) what.reminder = i;
-  }
-  if (prefs_.hourBell) {
-    static const int hours[3] = {6, 12, 18};
-    for (int i = 0; i < 3; i++) {
-      const int at = hours[i] * 60;
-      if ((r.bellsFired & (1 << i)) || minute < at) continue;
-      r.bellsFired |= static_cast<uint8_t>(1 << i);
-      if (minute - at <= 10 && what.bellHour < 0) what.bellHour = hours[i];
-    }
-  }
-  return what;
+Plan Controller::plan() const {
+  Plan p;
+  for (int i = 0; i < 4; i++) p.reminder[i] = prefs_.reminder[i];
+  p.hourBell = prefs_.hourBell;
+  p.syncHours = prefs_.syncHours;
+  p.canSync = linked() && net::wifiConfigured();
+  return p;
+}
+
+Due Controller::takeDue() { return app::takeDue(moment(), plan(), sys::rtc()); }
+
+// A sync that got no answer: wait longer each time before the next one.
+void Controller::syncFailed() {
+  sys::RtcState& r = sys::rtc();
+  if (r.syncFailures < 250) r.syncFailures++;
+  r.nextTryRaw = sys::rawSeconds() + retryDelay(r.syncFailures);
 }
 
 void Controller::everySecond() {
@@ -616,44 +596,8 @@ void Controller::ringBell(int strikes) {
 }
 
 uint64_t Controller::secondsToNextWake() const {
-  const sys::RtcState& r = sys::rtc();
-  const int64_t raw = sys::rawSeconds();
-  int64_t best = INT64_MAX;
-  auto consider = [&](int64_t seconds) {
-    if (seconds < 5) seconds = 5;
-    if (seconds < best) best = seconds;
-  };
-
-  if (r.silenceEndsRaw != 0) consider(r.silenceEndsRaw - raw);
-
-  const bool canSync = linked() && net::wifiConfigured();
-  if (sys::clockValid() && sys::utcOffsetKnown()) {
-    const int64_t now = sys::nowUtc();
-    const int minute = sys::minuteOfDay();
-    for (int i = 0; i < 4; i++) {
-      const int at = prefs_.reminder[i];
-      if (at < 0) continue;
-      // Still due today and not rung yet: nextLocalTime() answers tomorrow
-      // once the minute has come, so ask for "in a moment" instead.
-      if (minute >= at && !(r.remindersFired & (1 << i)) && r.firedDay == static_cast<int32_t>(sys::localDays())) consider(5);
-      else consider(sys::nextLocalTime(at) - now);
-    }
-    if (prefs_.hourBell) {
-      for (int hour : {6, 12, 18}) consider(sys::nextLocalTime(hour * 60) - now);
-    }
-    // A fresh day right after the owner's midnight.
-    if (canSync) consider(sys::nextLocalTime(0) - now + cfg::kAfterMidnightSeconds);
-  }
-  if (canSync && prefs_.syncHours > 0) {
-    int64_t at = (r.lastAnswerRaw != 0 ? r.lastAnswerRaw : raw) + static_cast<int64_t>(prefs_.syncHours) * 3600;
-    if (at < r.nextTryRaw) at = r.nextTryRaw;
-    // Overdue and failing (away from every known network): look again in a
-    // while, not at once.
-    if (at <= raw) at = raw + 30 * 60;
-    consider(at - raw);
-  }
-  if (best == INT64_MAX) return 0;
-  return sys::sleepSecondsFor(best);
+  const int64_t seconds = app::secondsToNextWake(moment(), plan(), sys::rtc());
+  return seconds <= 0 ? 0 : sys::sleepSecondsFor(seconds);
 }
 
 // ========================================================= input and power

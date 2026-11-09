@@ -28,7 +28,7 @@ APP_OBJ  := $(patsubst %.cpp,$(BUILD)/app/%.o,$(notdir $(APP_SRC)))
 
 vpath %.cpp ../src/ui ../src/model .
 
-.PHONY: shots check clean
+.PHONY: shots check test clean
 shots: $(BUILD)/sim
 	@mkdir -p $(OUT)
 	@./$(BUILD)/sim $(OUT) sample_today.json 2>/dev/null
@@ -56,6 +56,15 @@ $(BUILD)/app/%.o: %.cpp $(wildcard ../src/ui/*.h) ../src/model/today.h
 check:
 	@$(MAKE) --no-print-directory BUILD=build-asan SAN="-fsanitize=address,undefined -fno-omit-frame-pointer -g" build-asan/sim
 	@ASAN_OPTIONS=detect_leaks=0 ./build-asan/sim $(OUT) sample_today.json exercise 2>&1 | grep -v 'Warn\]' | tail -25
+
+# The arithmetic the battery depends on: the clock, the wake schedule,
+# reminders, the day seen from another date. No LVGL drawing involved, but
+# the model needs its colour type, hence the include path.
+TEST_SRC := test_logic.cpp ../src/app/schedule.cpp ../src/sys/clock.cpp ../src/sys/rtc_state.cpp ../src/model/today.cpp
+test: $(LVGL_OBJ) $(FONT_OBJ)
+	@$(CXX) -std=gnu++17 -O1 -Wall -Wno-maybe-uninitialized -fsanitize=address,undefined $(DEFS) $(INCS) -Dgettimeofday=fakeGettimeofday \
+	  -o $(BUILD)/test_logic $(TEST_SRC) $(LVGL_OBJ) $(FONT_OBJ) -lm
+	@./$(BUILD)/test_logic sample_today.json
 
 clean:
 	rm -rf $(BUILD) build-asan $(OUT)

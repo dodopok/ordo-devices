@@ -3,6 +3,7 @@
 #include <Arduino.h>
 
 #include "../board/power.h"
+#include "schedule.h"
 #include "../model/today.h"
 #include "../net/ordo_api.h"
 #include "../net/wifi.h"
@@ -29,12 +30,6 @@ class Controller {
  private:
   enum class Flow { Day, WifiSetup, Linking };
   enum class Notice { None, Reminder, Bell, SilenceDone };
-
-  struct Due {
-    int reminder = -1;   // office index
-    int bellHour = -1;   // 6, 12 or 18
-    bool silence = false;
-  };
 
   // boot
   void loadDay();
@@ -63,7 +58,10 @@ class Controller {
   void showBlocked();
 
   // time-driven
+  Moment moment() const;
+  Plan plan() const;
   Due takeDue();
+  void syncFailed();
   void everySecond();
   void fire(const Due& due);
   void ringBell(int strikes);

@@ -186,6 +186,7 @@ cd compass
 pio pkg install -e amoled175c   # uma vez: baixa o LVGL e o ArduinoJson
 make -C sim shots               # PNGs em sim/out/
 make -C sim check               # toca em todos os controles com verificação de memória
+make -C sim test                # relógio, agenda de acordar, lembretes e o dia sem rede
 ```
 
 As fontes (Raleway e Newsreader, as do app, com acentos) são geradas por
@@ -206,6 +207,7 @@ compass/
     ├── main.cpp
     ├── app_config.h        URLs, tempos, brilho
     ├── app/controller.*    acordar, sincronizar, tocar, dormir
+    ├── app/schedule.*      quando acordar sozinho e o que tocar (testado em sim/)
     ├── board/              tela (CO5300), toque (CST9217), energia e sono (AXP2101), sino (ES8311)
     ├── sys/                relógio emprestado da API; estado que sobrevive ao sono
     ├── net/                Wi-Fi com várias redes, página de configuração, cliente da API, raízes TLS

@@ -31,6 +31,11 @@ int secondOfDay();
 // UTC seconds of the next time the local clock shows `minute` of the day.
 int64_t nextLocalTime(int minute);
 
+// The owner's zone, worked out from an answer of an API that does not send
+// `utc_offset_seconds`: the payload says how long until the owner's
+// midnight, the `Date` header says what time it is in UTC.
+int32_t offsetFromDayEnd(int64_t utc, uint32_t dayEndsInSeconds);
+
 // How long the hardware timer must run for `seconds` of true time to pass.
 uint64_t sleepSecondsFor(int64_t seconds);
 

@@ -24,6 +24,7 @@ struct RtcState {
   // after a failure. Raw seconds, so they work before the clock is set.
   int64_t lastAnswerRaw;    // last 200 or 304 from /device/today; 0: never
   int64_t nextTryRaw;       // no sync before this (rate limit, repeated failure)
+  uint8_t syncFailures;     // syncs in a row that got no answer
   // 0: fine; 1: the owner's subscription lapsed; 2: this client was disabled.
   uint8_t blocked;
 
