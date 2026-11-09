@@ -11,3 +11,8 @@ compass/include/secrets.h
 # Editor and OS noise
 .DS_Store
 *.swp
+
+# Screen simulator and font generation leftovers
+compass/sim/build/
+compass/sim/out/
+compass/tools/.fontwork/

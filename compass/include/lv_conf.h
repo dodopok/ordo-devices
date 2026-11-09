@@ -32,14 +32,15 @@
 #define LV_DRAW_SW_SUPPORT_RGB565A8 0
 #define LV_DRAW_SW_SUPPORT_RGB888 0
 #define LV_DRAW_SW_SUPPORT_XRGB8888 0
-#define LV_DRAW_SW_SUPPORT_ARGB8888 0
-// LVGL 9.6 enables the premultiplied variant by default and then calls the
-// ARGB8888 blender it did not compile; both off until ARGB8888 is needed.
+// The QR code is an indexed (I1) canvas, and LVGL draws indexed images by
+// decoding them to ARGB8888 first: with either format off the code comes out
+// as an empty square.
+#define LV_DRAW_SW_SUPPORT_ARGB8888 1
 #define LV_DRAW_SW_SUPPORT_ARGB8888_PREMULTIPLIED 0
 #define LV_DRAW_SW_SUPPORT_L8 0
 #define LV_DRAW_SW_SUPPORT_AL88 0
 #define LV_DRAW_SW_SUPPORT_A8 1
-#define LV_DRAW_SW_SUPPORT_I1 0
+#define LV_DRAW_SW_SUPPORT_I1 1
 #define LV_DRAW_SW_DRAW_UNIT_CNT 1
 #define LV_DRAW_SW_COMPLEX 1
 #define LV_DRAW_SW_SHADOW_CACHE_SIZE 0
@@ -57,19 +58,14 @@
 #define LV_USE_ASSERT_MEM_INTEGRITY 0
 #define LV_USE_ASSERT_OBJ 0
 
-/* Fonts. The compass is Portuguese first, so the Latin-1 range matters; the
- * built-in Montserrat set covers it. */
-#define LV_FONT_MONTSERRAT_12 1
-#define LV_FONT_MONTSERRAT_14 1
-#define LV_FONT_MONTSERRAT_16 1
-#define LV_FONT_MONTSERRAT_18 1
+/* Fonts. The text faces are the Ordo app's own, Raleway and Newsreader,
+ * generated with the Latin-1 range by tools/make_fonts.sh (src/ui/fonts).
+ * LVGL's built-in Montserrat only has ASCII, so it stays for one thing: the
+ * icon glyphs (LV_SYMBOL_*) it carries. */
 #define LV_FONT_MONTSERRAT_20 1
-#define LV_FONT_MONTSERRAT_24 1
 #define LV_FONT_MONTSERRAT_28 1
-#define LV_FONT_MONTSERRAT_32 1
-#define LV_FONT_MONTSERRAT_40 1
-#define LV_FONT_MONTSERRAT_44 1
-#define LV_FONT_DEFAULT &lv_font_montserrat_16
+#define LV_FONT_CUSTOM_DECLARE LV_FONT_DECLARE(ordo_sans_18)
+#define LV_FONT_DEFAULT &ordo_sans_18
 #define LV_FONT_FMT_TXT_LARGE 0
 #define LV_USE_FONT_COMPRESSED 0
 #define LV_USE_FONT_PLACEHOLDER 1
