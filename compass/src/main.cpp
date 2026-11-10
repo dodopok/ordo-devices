@@ -6,6 +6,11 @@
 #include "app/controller.h"
 #include "app_config.h"
 
+// The main loop makes TLS connections of its own (a background sync, a
+// search for a firmware the owner asked for), on top of whatever LVGL has on
+// the stack: twice the default 8 KB.
+SET_LOOP_TASK_STACK_SIZE(16 * 1024);
+
 namespace {
 app::Controller controller;
 }

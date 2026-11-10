@@ -199,6 +199,48 @@ void showReminder(int office) {
   present(scr);
 }
 
+void showStreakReminder() {
+  lv_obj_t* scr = begin(true, 25);
+  const model::Today& t = S.day;
+  ringArc(scr, 452, 5, 0.0f, 1.0f, theme::gold());
+  breathe(bellIcon(scr, 84, theme::gold()), LV_OPA_30, [](void* obj, int32_t v) {
+    lv_obj_set_style_opa(static_cast<lv_obj_t*>(obj), static_cast<lv_opa_t>(v), 0);
+  });
+  if (t.streakCurrent > 0) {
+    char days[16];
+    snprintf(days, sizeof(days), "%d", t.streakCurrent);
+    text(scr, days, theme::display(), theme::fg(), 132, 0, 240);
+    text(scr, t.streakCurrent == 1 ? tr("DIA SEGUIDO", "DAY STREAK", "DÍA SEGUIDO") : tr("DIAS SEGUIDOS", "DAY STREAK", "DÍAS SEGUIDOS"),
+         theme::tiny(), theme::gold(), 192, 3, 260);
+    text(scr, tr("Ainda dá tempo de orar hoje e manter a sequência.", "There is still time to pray today and keep the streak.",
+                 "Aún hay tiempo de orar hoy y mantener la racha."),
+         theme::body(), theme::dim(), 232, 0, 290);
+  } else {
+    text(scr, tr("Ainda dá tempo", "There is still time", "Aún hay tiempo"), theme::large(), theme::fg(), 150, 0, 320);
+    text(scr, tr("Nenhum ofício orado hoje.", "No office prayed today.", "Ningún oficio orado hoy."), theme::body(), theme::dim(), 206, 0,
+         290);
+  }
+  text(scr, tr("toque para fechar", "tap to close", "toque para cerrar"), theme::tiny(), theme::faint(), 372, 0, 240);
+  tapDismisses(scr);
+  present(scr);
+}
+
+void showReminderTest() {
+  lv_obj_t* scr = begin(true, 25);
+  ringArc(scr, 452, 5, 0.0f, 1.0f, theme::gold());
+  breathe(bellIcon(scr, 96, theme::gold()), LV_OPA_30, [](void* obj, int32_t v) {
+    lv_obj_set_style_opa(static_cast<lv_obj_t*>(obj), static_cast<lv_opa_t>(v), 0);
+  });
+  text(scr, tr("Aviso de teste", "Test reminder", "Aviso de prueba"), theme::large(), theme::fg(), 152, 0, 320);
+  text(scr, tr("A bússola acordou sozinha e tocou. Os avisos dos ofícios fazem o mesmo caminho.",
+               "The compass woke by itself and rang. The offices' reminders take the same path.",
+               "La brújula despertó sola y sonó. Los avisos de los oficios hacen el mismo camino."),
+       theme::body(), theme::dim(), 208, 0, 300);
+  text(scr, tr("toque para fechar", "tap to close", "toque para cerrar"), theme::tiny(), theme::faint(), 372, 0, 240);
+  tapDismisses(scr);
+  present(scr);
+}
+
 void showHourBell(int hour) {
   lv_obj_t* scr = begin(true, 10);
   const lv_color_t accent = S.day.day.hasColor ? S.day.day.color : theme::gold();
@@ -262,7 +304,7 @@ void showUpdating(const String& version, int percent) {
 }
 
 void dismissNotice() {
-  if (S.dayShown) showPage(S.page);
+  if (S.dayShown) showPage(S.page, Wipe::Close);
 }
 
 }  // namespace ui

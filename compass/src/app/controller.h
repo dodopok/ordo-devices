@@ -13,6 +13,7 @@
 #include "../net/wifi.h"
 #include "../store/content.h"
 #include "../store/settings.h"
+#include "../sys/wake_trail.h"
 #include "../ui/ui.h"
 
 namespace app {
@@ -25,8 +26,9 @@ namespace app {
 //
 // A wake by a button draws the day from what is stored and only then, if it
 // is stale, fetches a fresh one. A wake by the timer keeps the screen dark:
-// it syncs, or lights up just long enough to ring a reminder. On mains
-// power, by default, it stays on like a desk clock.
+// it syncs, or lights up just long enough to ring a reminder, and never
+// both: what rings does not wait for a network. On mains power, by default,
+// it stays on like a desk clock.
 class Controller {
  public:
   void begin();
@@ -34,7 +36,7 @@ class Controller {
 
  private:
   enum class Flow { Day, WifiSetup, Linking };
-  enum class Notice { None, Reminder, Bell, SilenceDone };
+  enum class Notice { None, Reminder, Streak, Bell, SilenceDone, Test };
 
   // boot
   void loadDay();
@@ -58,7 +60,7 @@ class Controller {
   void requestSync(bool force);
   void stepSync();
   void finishSync();
-  bool syncBlocking();
+  bool syncBounded(uint32_t budgetMs);
   void fetchToday();
   void applyToday(const net::TodayResult& result);
   bool startFetch();
@@ -73,6 +75,7 @@ class Controller {
   };
   struct ContentResult {
     int status = 0;
+    int tlsError = 0;  // set when the site could not be reached
     std::vector<uint8_t> body;
   };
   std::vector<ContentJob> wantedContent(int limit);
@@ -80,14 +83,14 @@ class Controller {
   static void contentTask(void* self);
   void drainContent();
   void keepContent(const ContentJob& job, ContentResult& result);
-  void fetchContentBlocking();
   void pruneContent();
   ui::Art artFor(const String& slug);
   model::CelebrationText textFor(const String& slug);
 
   // firmware updates
   bool updateCheckDue() const;
-  void rememberOffer(net::OtaCheck result, const model::FirmwareOffer& offer);
+  void rememberOffer(net::OtaCheck result, const model::FirmwareOffer& offer, const String& detail = String());
+  bool nothingPrayedToday() const;
   bool connectForSite();
   void checkUpdateNow();
   void installUpdateNow();
@@ -99,6 +102,10 @@ class Controller {
   Moment moment() const;
   Plan plan() const;
   Due takeDue();
+  bool alreadyPrayed(int office) const;
+  void note(sys::WakeStep step);
+  void noteNet(sys::WakeNet net);
+  void noteDue(const Due& what);
   void syncFailed();
   void everySecond();
   void fire(const Due& due);
@@ -129,6 +136,8 @@ class Controller {
   long shownDays_ = -1;
   Notice pending_ = Notice::None;
   int pendingValue_ = 0;
+  // This wake's reminder was for an office already prayed: nothing rang.
+  bool skipped_ = false;
 
   // sync
   bool syncing_ = false;
@@ -166,6 +175,8 @@ class Controller {
 
   ui::UpdateState update_ = ui::UpdateState::Unknown;
   model::FirmwareOffer offer_;
+  String updateDetail_;  // why the last search failed
+  String siteProblem_;   // why the last picture or text did not come
   // A firmware being written, on a task with a stack deep enough for TLS and
   // flash at once. The main loop only draws how far it is and keeps the
   // compass from sleeping or being navigated meanwhile.

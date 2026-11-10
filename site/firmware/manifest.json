@@ -1,23 +1,23 @@
 {
   "v": 1,
-  "version": "0.4.0",
-  "released": "2026-11-09",
+  "version": "0.4.2",
+  "released": "2026-11-10",
   "notes": {
-    "pt": "Comemoração do dia com foto e texto, jejum na tela Agora, a semana nos Ofícios, lembretes vindos do app e atualização pelo Wi-Fi.",
-    "en": "The day's celebration with its picture and text, the fast on the Now face, the week on Offices, reminders from the app and updates over Wi-Fi.",
-    "es": "La conmemoración del día con foto y texto, el ayuno en la pantalla Ahora, la semana en Oficios, recordatorios de la app y actualización por Wi-Fi."
+    "pt": "Os avisos tocam sem depender de rede: a bússola acorda dez minutos antes para sincronizar e toca na hora. Lembretes ganhou \"Testar aviso\" e Sobre mostra os últimos despertares. Ao trocar de tela a anterior não apaga mais: a nova entra por cima, na direção do gesto.",
+    "en": "Reminders ring without waiting for a network: the compass wakes ten minutes earlier to sync and rings on time. Reminders has \"Try a reminder\" and About lists the last wakes. Changing screens no longer dims the old one: the new one sweeps over it, following the gesture.",
+    "es": "Los avisos suenan sin depender de la red: la brújula despierta diez minutos antes para sincronizar y suena a su hora. Recordatorios tiene \"Probar aviso\" y Acerca de muestra los últimos despertares. Al cambiar de pantalla la anterior ya no se apaga: la nueva entra por encima, siguiendo el gesto."
   },
   "boards": {
     "amoled175c": {
-      "path": "/firmware/0.4.0/amoled175c.bin",
-      "size": 1959248,
-      "sha256": "6959e015ac220ce38a0d7f036c8f81737cc96350cf32686d99703635c8b931fc",
+      "path": "/firmware/0.4.2/amoled175c.bin",
+      "size": 1975664,
+      "sha256": "dd29f627dccb19e05bf13cb0ef495a83855cbaabc43be13ad7bb3720a7c2b3b9",
       "sig": ""
     },
     "amoled175": {
-      "path": "/firmware/0.4.0/amoled175.bin",
-      "size": 1931664,
-      "sha256": "2cdf288647f455a0b408a16a441742e85c6bbd3e0ef3f95a643051a035239956",
+      "path": "/firmware/0.4.2/amoled175.bin",
+      "size": 1948096,
+      "sha256": "1049d8e8a4eba115dbec8203e75d98f894c0b89d00d6bb0c40e7fb72d83f46a9",
       "sig": ""
     }
   }

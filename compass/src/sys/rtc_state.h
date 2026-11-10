@@ -30,11 +30,18 @@ struct RtcState {
 
   // What already rang today, so a wake a little early or late cannot ring twice.
   int32_t firedDay;         // local date, days since 1970
-  uint8_t remindersFired;   // bit per office
+  // The minute each reminder was settled for today (rung, or let pass because
+  // the compass only learnt of it later); -1: not yet. Four offices and the
+  // streak reminder. Keeping the minute, not a flag, lets a reminder moved to
+  // a later hour the same day ring again.
+  int16_t firedAt[5];
   uint8_t bellsFired;       // bit 0: 6h, 1: 12h, 2: 18h
 
   // A time of silence under way.
   int64_t silenceEndsRaw;   // raw seconds; 0: none
+  // A reminder asked for from the settings, to see the compass wake by
+  // itself and ring: when it is due.
+  int64_t testAtRaw;        // raw seconds; 0: none
 
   // Wi-Fi fast reconnect.
   char ssid[33];

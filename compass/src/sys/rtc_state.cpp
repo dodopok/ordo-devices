@@ -15,6 +15,7 @@ bool rtcBegin() {
   memset(&state, 0, sizeof(state));
   state.magic = kRtcMagic;
   state.firedDay = -1;
+  for (int16_t& at : state.firedAt) at = -1;
   state.countersDay = -1;
   return false;
 }

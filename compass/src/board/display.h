@@ -2,6 +2,8 @@
 
 #include <lvgl.h>
 
+#include "../ui/wipe.h"
+
 namespace board {
 
 // Brings up the CO5300 over QSPI and registers it with LVGL. Call lv_init()
@@ -20,5 +22,15 @@ void displayOn(uint8_t brightness);
 void displayHoldForSleep();
 
 lv_display_t* display();
+
+// A change of screen (ui/wipe.h). Between the two calls LVGL draws into a
+// frame kept in the external memory instead of onto the glass, which keeps
+// showing the old screen; `displayStageReveal` then lays that frame over the
+// glass strip by strip and hands the glass back. LVGL's clock stands still
+// meanwhile, so what the new screen animates begins when it is in place.
+// `displayStageBegin` answers false when there is no memory for the frame:
+// nothing was changed, and LVGL goes on drawing straight onto the glass.
+bool displayStageBegin();
+void displayStageReveal(ui::Wipe wipe);
 
 }  // namespace board

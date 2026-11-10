@@ -16,8 +16,11 @@ namespace net {
 
 enum class OtaCheck { UpToDate, Available, Failed };
 // Asks the site for its manifest. `offer` is filled when a newer firmware
-// for this board is there.
-OtaCheck otaCheck(Site& site, const String& language, model::FirmwareOffer& offer);
+// for this board is there. On Failed, `detail` says why in a few technical
+// words, for the update screen.
+OtaCheck otaCheck(Site& site, const String& language, model::FirmwareOffer& offer, String* detail = nullptr);
+// "HTTP 404", "conexão -1, TLS -0x2700": a failed request to the site, named.
+String siteFailure(int status, int tlsError);
 
 enum class OtaResult { Installed, Unreachable, BadImage, NoRoom };
 // Downloads and writes `offer`. `progress` is called with 0..100 as it goes.

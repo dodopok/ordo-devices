@@ -28,6 +28,9 @@ class Site {
   // `received` is what was handed over.
   int stream(const String& path, const std::function<bool(const uint8_t*, size_t)>& sink, size_t& received);
   void close();
+  // The TLS layer's last error (an mbedTLS code such as -0x2700, certificate
+  // not trusted, or -0x7F00, out of memory); 0 when it had none.
+  int lastTlsError();
 
  private:
   bool open(const String& path);

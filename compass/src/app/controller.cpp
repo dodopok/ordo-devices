@@ -12,6 +12,7 @@
 #include "../board/touch.h"
 #include "../sys/clock.h"
 #include "../sys/rtc_state.h"
+#include "../sys/wake_trail.h"
 #include "board_pins.h"
 
 namespace app {
@@ -34,6 +35,40 @@ ui::Swipe swipeOf(board::TouchSwipe swipe) {
     case board::TouchSwipe::Left: return ui::Swipe::Left;
     default: return ui::Swipe::Right;
   }
+}
+
+sys::WakeCause causeOf(board::Wake wake) {
+  switch (wake) {
+    case board::Wake::Timer: return sys::WakeCause::Timer;
+    case board::Wake::Touch: return sys::WakeCause::Touch;
+    case board::Wake::PowerButton:
+    case board::Wake::BootButton: return sys::WakeCause::Button;
+    default: return sys::WakeCause::PowerOn;
+  }
+}
+
+// The processor restarted by itself: something went wrong before this boot.
+bool restartedByItself() {
+  switch (esp_reset_reason()) {
+    case ESP_RST_PANIC:
+    case ESP_RST_INT_WDT:
+    case ESP_RST_TASK_WDT:
+    case ESP_RST_WDT:
+    case ESP_RST_BROWNOUT:
+      return true;
+    default:
+      return false;
+  }
+}
+
+uint8_t dueBits(const Due& what) {
+  uint8_t bits = 0;
+  if (what.reminder >= 0 && what.reminder < 4) bits |= static_cast<uint8_t>(sys::kDueMorning << what.reminder);
+  if (what.streak) bits |= sys::kDueStreak;
+  if (what.bellHour >= 0) bits |= sys::kDueBell;
+  if (what.silence) bits |= sys::kDueSilence;
+  if (what.test) bits |= sys::kDueTest;
+  return bits;
 }
 
 ui::PortalStep stepOf(net::PortalState state) {
@@ -65,6 +100,11 @@ void Controller::begin() {
   loadDay();
   ORDO_LOG("[ordo] %s firmware %s, wake %d, %s\n", ORDO_BOARD_NAME, ORDO_FIRMWARE_VERSION, static_cast<int>(wake_),
            warm ? "from sleep" : "cold");
+  // A line for the "Sobre" screen about this wake, written as it goes: if
+  // it stops half way, the line says where.
+  sys::trailBegin();
+  sys::trailOpen(sys::clockValid() && sys::utcOffsetKnown() ? static_cast<int16_t>(sys::minuteOfDay()) : static_cast<int16_t>(-1),
+                 causeOf(wake_), restartedByItself());
 
   // For the "Sobre" screen: how often it woke and synchronised today.
   sys::RtcState& r = sys::rtc();
@@ -79,6 +119,7 @@ void Controller::begin() {
   // A wake the firmware scheduled: stay dark unless something has to ring.
   if (wake_ == board::Wake::Timer && !background()) goToSleep();
 
+  if (pending_ != Notice::None) note(sys::WakeStep::Lighting);
   startScreen();
   // After an update this is the new firmware's first boot: it got as far as
   // its screen, so the bootloader may stop keeping the old one in reserve.
@@ -103,31 +144,40 @@ void Controller::loadDay() {
   if (!sys::utcOffsetKnown() && today_.hasUtcOffset) sys::setUtcOffset(today_.utcOffsetSeconds);
 }
 
+// A wake by the timer. True when something has to ring, which the caller
+// then does with the screen up.
+//
+// What rings, rings from what is on record: nothing between the wake and
+// the bell waits for a network. The record is kept fresh by the wakes that
+// come without anything to ring: every few hours, after midnight, and a few
+// minutes before each reminder (app::kPrepMinutes), which also sets the
+// clock so the bell falls on its minute.
 bool Controller::background() {
-  Due what = takeDue();
-  const bool dayTurned = today_.valid && sys::clockValid() && sys::utcOffsetKnown() && sys::localDays() != today_.day.days;
-  const bool wantSync = linked() && net::wifiConfigured() &&
-                        (what.reminder >= 0 || dayTurned || (prefs_.syncHours > 0 && stale(prefs_.syncHours * 3600UL - 300)));
-  if (wantSync) syncBlocking();
-
+  const Due what = takeDue();
+  noteDue(what);
   if (what.silence) {
     pending_ = Notice::SilenceDone;
-    return true;
-  }
-  if (what.reminder >= 0) {
-    // Fresh from the API when there was a network: an office already prayed
-    // is not announced.
-    const model::Today view = currentView();
-    if (view.officesKnown && view.offices[what.reminder].done) return false;
+  } else if (what.test) {
+    pending_ = Notice::Test;
+  } else if (what.reminder >= 0 && !alreadyPrayed(what.reminder)) {
     pending_ = Notice::Reminder;
     pendingValue_ = what.reminder;
-    return true;
-  }
-  if (what.bellHour >= 0) {
+  } else if (what.streak && nothingPrayedToday()) {
+    // The app's evening nudge, for a day with nothing prayed. An office's
+    // own reminder at the same minute (above) says it better.
+    pending_ = Notice::Streak;
+  } else if (what.bellHour >= 0) {
     pending_ = Notice::Bell;
     pendingValue_ = what.bellHour;
-    return true;
   }
+  if (pending_ != Notice::None) return true;
+  // A reminder for an office already prayed: said in the trail, not rung.
+  skipped_ = what.reminder >= 0 || what.streak;
+
+  const bool dayTurned = today_.valid && sys::clockValid() && sys::utcOffsetKnown() && sys::localDays() != today_.day.days;
+  const bool periodic = prefs_.syncHours > 0 && stale(prefs_.syncHours * 3600UL - 300);
+  const bool beforeReminder = prefs_.syncHours > 0 && app::reminderWithin(moment(), plan(), app::kPrepMinutes + 2) && stale(5 * 60);
+  if (linked() && net::wifiConfigured() && (dayTurned || periodic || beforeReminder)) syncBounded(cfg::kBackgroundSyncMs);
   return false;
 }
 
@@ -171,8 +221,10 @@ void Controller::showInitial() {
   if (pending_ != Notice::None) {
     Due what;
     if (pending_ == Notice::Reminder) what.reminder = pendingValue_;
+    if (pending_ == Notice::Streak) what.streak = true;
     if (pending_ == Notice::Bell) what.bellHour = pendingValue_;
     if (pending_ == Notice::SilenceDone) what.silence = true;
+    if (pending_ == Notice::Test) what.test = true;
     pending_ = Notice::None;
     // The notice is what this wake is for: it is drawn before the panel
     // lights up, and the bell waits until it can be read.
@@ -185,6 +237,7 @@ void Controller::showInitial() {
   lv_timer_handler();
   applyBrightness();
   setCpuFrequencyMhz(cfg::kCpuScreenMhz);
+  note(sys::WakeStep::Shown);
 }
 
 // =================================================================== loop
@@ -414,18 +467,20 @@ void Controller::stepSync() {
     case net::WifiState::Connected:
       if (startFetch()) break;
       // No memory for the task: ask from here, with the screen settled first.
-      settleScreen();
+      if (screenUp_) settleScreen();
       fetchToday();
       finishSync();
       break;
     case net::WifiState::Connecting:
       if (millis() - syncStartedMs_ > 30000) {
+        noteNet(sys::WakeNet::NoWifi);
         syncFailed();
         finishSync();
       }
       break;
     default:
       // No known network in range: nothing to do until a later look.
+      noteNet(sys::WakeNet::NoWifi);
       syncFailed();
       finishSync();
       break;
@@ -440,24 +495,32 @@ void Controller::finishSync() {
   if (screenUp_) pushStatus();
 }
 
-bool Controller::syncBlocking() {
+// A sync with nobody watching. It goes through the very steps a sync with
+// the screen on does (stepSync: the request on a task of its own, then the
+// pictures the days ahead still lack), driven from here until it ends or
+// `budgetMs` runs out. True when it ended by itself.
+bool Controller::syncBounded(uint32_t budgetMs) {
+  note(sys::WakeStep::Syncing);
+  syncing_ = true;
+  syncStartedMs_ = millis();
   setCpuFrequencyMhz(cfg::kCpuRadioMhz);
   net::wifiConnect();
   const uint32_t start = millis();
-  while (net::wifiState() == net::WifiState::Connecting && millis() - start < cfg::kBackgroundSyncMs) {
+  while (syncing_ && millis() - start < budgetMs) {
     net::wifiLoop();
+    stepSync();
     delay(15);
   }
-  const bool connected = net::wifiConnected();
-  if (connected) {
-    fetchToday();
-    // So that the morning's wake finds the day's picture already there.
-    if (linked() && today_.valid) fetchContentBlocking();
-  } else {
+  if (!syncing_) return true;
+  // Out of time. With no answer yet, it counts as a sync that failed, so the
+  // next try waits its turn on the ladder instead of coming in a minute.
+  // The tasks still talking to the network go when the processor sleeps.
+  if (!content_.running) {
+    noteNet(sys::WakeNet::TimedOut);
     syncFailed();
   }
-  net::wifiOff();
-  return connected;
+  syncing_ = false;
+  return false;
 }
 
 // ===================================================== pictures and texts
@@ -501,8 +564,9 @@ std::vector<Controller::ContentJob> Controller::wantedContent(int limit) {
 
 bool Controller::startContent() {
   content_.jobs = wantedContent(battery_.onUsb ? cfg::kContentPerSyncMains : cfg::kContentPerSyncBattery);
-  // The same connection asks, once a day, whether there is a newer firmware.
-  if (updateCheckDue()) {
+  // The same connection asks, once a day, whether there is a newer firmware:
+  // with the screen on or on mains, not on a wake nobody is watching.
+  if (updateCheckDue() && (screenUp_ || battery_.onUsb)) {
     ContentJob job;
     job.manifest = true;
     content_.jobs.push_back(job);
@@ -533,8 +597,10 @@ void Controller::contentTask(void* self) {
       ContentResult& result = c->content_.results[i];
       if (job.manifest) {
         result.status = site.get("/firmware/manifest.json", result.body, cfg::kManifestMaxBytes);
+        if (result.status < 0) result.tlsError = site.lastTlsError();
       } else {
         result.status = site.get(job.path, result.body, job.kind == store::ContentKind::Art ? cfg::kArtMaxBytes : cfg::kTextMaxBytes);
+        if (result.status < 0) result.tlsError = site.lastTlsError();
       }
       c->content_.produced = static_cast<int>(i) + 1;
       // The site did not answer at all: the rest would go the same way.
@@ -558,13 +624,18 @@ void Controller::keepContent(const ContentJob& job, ContentResult& result) {
   if (job.manifest) {
     model::FirmwareOffer offer;
     net::OtaCheck check = net::OtaCheck::Failed;
-    if (result.status == 200 && model::parseManifest(reinterpret_cast<const char*>(result.body.data()), result.body.size(), ORDO_BOARD_KEY,
-                                                     today_.language, offer)) {
+    String detail;
+    if (result.status != 200 || result.body.empty()) {
+      detail = net::siteFailure(result.status, result.tlsError);
+    } else if (!model::parseManifest(reinterpret_cast<const char*>(result.body.data()), result.body.size(), ORDO_BOARD_KEY, today_.language,
+                                     offer)) {
+      detail = "manifesto sem " ORDO_BOARD_KEY;
+    } else {
       const bool newer = model::versionNewer(offer.version.c_str(), ORDO_FIRMWARE_VERSION) &&
                          !(net::otaRequiresSignature() && offer.signature.isEmpty());
       check = newer ? net::OtaCheck::Available : net::OtaCheck::UpToDate;
     }
-    rememberOffer(check, offer);
+    rememberOffer(check, offer, detail);
     return;
   }
   const bool art = job.kind == store::ContentKind::Art;
@@ -575,27 +646,15 @@ void Controller::keepContent(const ContentJob& job, ContentResult& result) {
       if (art && artSlug_ == job.slug) artSlug_ = String();
       if (screenUp_) ui::contentArrived(job.slug);
     }
+    siteProblem_ = String();
   } else if (result.status == 404) {
     // No picture in the CMS, or one too small to show: the page is set in
     // type, and the site is not asked again until the next wake.
     missing_.push_back(job.slug + (art ? ".jpg" : ".json"));
+  } else {
+    // Anything else is worth knowing about: it shows on the "Sobre" screen.
+    siteProblem_ = net::siteFailure(result.status, result.tlsError);
   }
-}
-
-// The same, without a task: for a wake nobody is watching.
-void Controller::fetchContentBlocking() {
-  const std::vector<ContentJob> jobs = wantedContent(cfg::kContentPerSyncBattery);
-  if (!jobs.empty()) {
-    net::Site site;
-    for (const ContentJob& job : jobs) {
-      ContentResult result;
-      result.status = site.get(job.path, result.body, job.kind == store::ContentKind::Art ? cfg::kArtMaxBytes : cfg::kTextMaxBytes);
-      if (result.status < 0 && result.status != net::kSiteBodyRefused) break;
-      keepContent(job, result);
-    }
-    site.close();
-  }
-  pruneContent();
 }
 
 // The days that went by take their pictures with them.
@@ -654,8 +713,16 @@ bool Controller::updateCheckDue() const {
   return r.updateCheckedRaw == 0 || sys::rawSeconds() - r.updateCheckedRaw >= cfg::kUpdateCheckEverySeconds;
 }
 
-void Controller::rememberOffer(net::OtaCheck result, const model::FirmwareOffer& offer) {
+// True unless the compass knows an office was prayed today. A day it rolled
+// to without a network counts as nothing prayed: better a nudge too many.
+bool Controller::nothingPrayedToday() const {
+  const model::Today view = currentView();
+  return !view.officesKnown || view.completedToday == 0;
+}
+
+void Controller::rememberOffer(net::OtaCheck result, const model::FirmwareOffer& offer, const String& detail) {
   sys::RtcState& r = sys::rtc();
+  if (result != net::OtaCheck::Failed) updateDetail_ = String();
   switch (result) {
     case net::OtaCheck::Available:
       update_ = ui::UpdateState::Available;
@@ -671,6 +738,7 @@ void Controller::rememberOffer(net::OtaCheck result, const model::FirmwareOffer&
       break;
     case net::OtaCheck::Failed:
       // What was known before stands; only someone who asked is told.
+      updateDetail_ = detail;
       if (update_ == ui::UpdateState::Checking) update_ = ui::UpdateState::Failed;
       break;
   }
@@ -703,12 +771,13 @@ void Controller::checkUpdateNow() {
   lv_display_trigger_activity(nullptr);
   model::FirmwareOffer offer;
   net::OtaCheck result = net::OtaCheck::Failed;
+  String detail = "sem Wi-Fi";
   if (connectForSite()) {
     net::Site site;
-    result = net::otaCheck(site, today_.language, offer);
+    result = net::otaCheck(site, today_.language, offer, &detail);
     site.close();
   }
-  rememberOffer(result, offer);
+  rememberOffer(result, offer, detail);
   if (!syncing_ && !deskMode() && flow_ == Flow::Day) {
     net::wifiOff();
     setCpuFrequencyMhz(cfg::kCpuScreenMhz);
@@ -826,6 +895,7 @@ void Controller::applyToday(const net::TodayResult& result) {
   const bool answered = result.status != net::TodayStatus::NetworkError;
   if (answered && api_.serverTime() > 0) sys::clockSet(api_.serverTime());
   if (answered) r.syncFailures = 0;
+  noteNet(answered ? sys::WakeNet::Answered : sys::WakeNet::NoAnswer);
 
   switch (result.status) {
     case net::TodayStatus::Updated: {
@@ -924,6 +994,9 @@ Plan Controller::plan() const {
   // The times set in the app, when the owner follows the app and it has any.
   const bool fromApp = prefs_.remindersFromApp && today_.valid && today_.hasReminders;
   for (int i = 0; i < 4; i++) p.reminder[i] = fromApp ? today_.reminders[i] : prefs_.reminder[i];
+  // The streak reminder exists only in the app: followed whenever the owner
+  // follows the app, whether or not any office has a time there.
+  if (prefs_.remindersFromApp && today_.valid) p.streakReminder = today_.streakRemindAt;
   p.hourBell = prefs_.hourBell;
   p.syncHours = prefs_.syncHours;
   p.canSync = linked() && net::wifiConfigured();
@@ -931,6 +1004,34 @@ Plan Controller::plan() const {
 }
 
 Due Controller::takeDue() { return app::takeDue(moment(), plan(), sys::rtc()); }
+
+// True when the compass knows that office was prayed today.
+bool Controller::alreadyPrayed(int office) const {
+  const model::Today view = currentView();
+  return office >= 0 && office < 4 && view.officesKnown && view.offices[office].done;
+}
+
+// The line of this wake on the "Sobre" screen (sys/wake_trail.h): how far
+// it got, what was due, what the network said.
+void Controller::note(sys::WakeStep step) {
+  sys::WakeNote& line = sys::trailNow();
+  line.step = step;
+  const uint32_t seconds = (millis() - startedMs_) / 1000;
+  line.seconds = static_cast<uint8_t>(seconds > 255 ? 255 : seconds);
+  sys::trailSeal();
+}
+
+void Controller::noteNet(sys::WakeNet net) {
+  sys::trailNow().net = net;
+  sys::trailSeal();
+}
+
+void Controller::noteDue(const Due& what) {
+  const uint8_t bits = dueBits(what);
+  if (bits == 0) return;
+  sys::trailNow().due |= bits;
+  sys::trailSeal();
+}
 
 // A sync that got no answer: wait longer each time before the next one.
 void Controller::syncFailed() {
@@ -948,13 +1049,9 @@ void Controller::everySecond() {
   }
 
   Due what = takeDue();
-  if (what.silence || what.reminder >= 0 || what.bellHour >= 0) {
-    if (what.reminder >= 0) {
-      const model::Today view = currentView();
-      if (view.officesKnown && view.offices[what.reminder].done) what.reminder = -1;
-    }
-    fire(what);
-  }
+  if (what.reminder >= 0 && alreadyPrayed(what.reminder)) what.reminder = -1;
+  if (what.streak && !nothingPrayedToday()) what.streak = false;
+  if (what.any()) fire(what);
 
   if (millis() - lastBatteryMs_ >= 20000 || lastBatteryMs_ == 0) {
     lastBatteryMs_ = millis();
@@ -983,12 +1080,20 @@ void Controller::everySecond() {
 
 void Controller::fire(const Due& what) {
   int strikes = 0;
+  noteDue(what);
+  note(sys::WakeStep::Lighting);
   if (what.silence) {
     ui::setSilence(false, 0);
     ui::showSilenceDone();
     strikes = 3;
+  } else if (what.test) {
+    ui::showReminderTest();
+    strikes = 2;
   } else if (what.reminder >= 0) {
     ui::showReminder(what.reminder);
+    strikes = 2;
+  } else if (what.streak) {
+    ui::showStreakReminder();
     strikes = 2;
   } else if (what.bellHour >= 0) {
     ui::showHourBell(what.bellHour);
@@ -1000,6 +1105,7 @@ void Controller::fire(const Due& what) {
   lv_timer_handler();
   applyBrightness();
   ringBell(strikes);
+  note(sys::WakeStep::Rang);
 }
 
 void Controller::ringBell(int strikes) {
@@ -1128,11 +1234,14 @@ void Controller::pushStatus() {
   status.update = update_;
   status.updateVersion = offer_.version;
   status.updateNotes = offer_.notes;
+  status.updateDetail = updateDetail_;
   ui::setStatus(status);
 }
 
 void Controller::goToSleep() {
   sys::RtcState& r = sys::rtc();
+  // A wake that never lit the screen ends here, and says so.
+  if (!screenUp_) note(skipped_ ? sys::WakeStep::Skipped : sys::WakeStep::Slept);
   if (screenUp_) r.beads = ui::beadsCount();
   net::portalStop();
   net::wifiOff();
@@ -1209,6 +1318,20 @@ ui::Actions Controller::actions() {
     };
   };
   a.brightnessMoved = [this]() { applyBrightness(); };
+  a.stageBegin = []() { return board::displayStageBegin(); };
+  a.stageReveal = [](ui::Wipe wipe) { board::displayStageReveal(wipe); };
+  // A reminder in a minute, with the compass asleep meanwhile: the way to
+  // see, without waiting for the evening, that it wakes by itself and rings.
+  a.testReminder = [this]() {
+    later_ = [this]() {
+      sys::rtc().testAtRaw = sys::rawSeconds() + cfg::kTestReminderSeconds;
+      ui::showMessage("Teste do aviso", "dormindo agora; em um minuto ela acorda sozinha e toca", false);
+      lv_timer_handler();
+      applyBrightness();
+      delay(2500);
+      goToSleep();
+    };
+  };
   a.silence = [this](int minutes) {
     sys::RtcState& r = sys::rtc();
     if (minutes > 0) {
@@ -1234,7 +1357,20 @@ ui::Actions Controller::actions() {
     d.wakesToday = sys::rtc().wakesToday;
     d.syncsToday = sys::rtc().syncsToday;
     d.clockDriftPpm = sys::clockDriftPpm();
+    d.siteProblem = siteProblem_;
+    d.freeMemoryKb = static_cast<uint32_t>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024);
+    d.lowestMemoryKb = static_cast<uint32_t>(heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL) / 1024);
+    // When it would wake by itself if put to sleep now.
+    const int64_t ahead = app::secondsToNextWake(moment(), plan(), sys::rtc());
+    if (ahead > 0 && sys::clockValid() && sys::utcOffsetKnown()) {
+      const int64_t minutes = sys::minuteOfDay() + (ahead + 30) / 60;
+      char at[24];
+      if (minutes >= 2 * 1440) snprintf(at, sizeof(at), "em %lld dias", static_cast<long long>(minutes / 1440));
+      else snprintf(at, sizeof(at), "%02d:%02d%s", static_cast<int>((minutes / 60) % 24), static_cast<int>(minutes % 60), minutes >= 1440 ? " de amanhã" : "");
+      d.nextWake = String(at);
+    }
     for (const auto& network : settings_.networks()) d.networks.push_back(network.ssid);
+    for (int i = 0; i < sys::trailCount(); i++) d.wakes.push_back(sys::trailAt(i));
     return d;
   };
   return a;

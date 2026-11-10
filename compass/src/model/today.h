@@ -107,6 +107,9 @@ struct Today {
   int completedToday = 0;
   int streakCurrent = 0;
   int streakLongest = 0;
+  // When the app nudges someone who has prayed nothing yet today, minute of
+  // the day; -1: that reminder is off in the app.
+  int16_t streakRemindAt = -1;
   // False on a day the device rolled to by itself: nobody has told it yet
   // which offices were prayed.
   bool officesKnown = true;

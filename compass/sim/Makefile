@@ -3,9 +3,9 @@
 #
 #   pio pkg install -e amoled175c     (once: fetches LVGL and ArduinoJson)
 #   make -C sim shots                 (PNGs in sim/out/)
-#   make -C sim movie                 (sim/out/ordo.gif: the dips and entrances)
+#   make -C sim movie                 (sim/out/ordo.gif: the wipes and entrances)
 #   make -C sim check                 (pokes every control under ASAN)
-#   make -C sim test                  (the clock and wake arithmetic)
+#   make -C sim test                  (the clock, the wake arithmetic, the wipes)
 #
 # Needs gcc, g++ and python3 with Pillow.
 
@@ -79,7 +79,7 @@ $(BUILD)/app/JPEGDEC.o: $(JPEG)/JPEGDEC.cpp
 	@echo c++ $(notdir $<)
 	@$(CXX) $(CXXFLAGS) -w $(if $(SAN),-fno-sanitize=undefined) -c $< -o $@
 
-$(BUILD)/app/%.o: %.cpp $(wildcard ../src/ui/*.h) $(wildcard ../src/model/*.h) ../src/content/art.h
+$(BUILD)/app/%.o: %.cpp $(wildcard ../src/ui/*.h) $(wildcard ../src/model/*.h) ../src/content/art.h ../src/sys/wake_trail.h
 	@mkdir -p $(dir $@)
 	@echo c++ $(notdir $<)
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
@@ -93,7 +93,7 @@ check: $(ART)
 # The arithmetic the battery depends on: the clock, the wake schedule,
 # reminders, the day seen from another date. No LVGL drawing involved, but
 # the model needs its colour type, hence the include path.
-TEST_SRC := test_logic.cpp ../src/app/schedule.cpp ../src/sys/clock.cpp ../src/sys/rtc_state.cpp $(SHARED)
+TEST_SRC := test_logic.cpp ../src/app/schedule.cpp ../src/sys/clock.cpp ../src/sys/rtc_state.cpp ../src/sys/wake_trail.cpp $(SHARED)
 test: $(LVGL_OBJ) $(FONT_OBJ) $(ART)
 	@$(CXX) -std=gnu++17 -O1 -w -fsanitize=address $(DEFS) $(INCS) -c $(JPEG)/JPEGDEC.cpp -o $(BUILD)/test_jpegdec.o
 	@$(CXX) -std=gnu++17 -O1 -Wall -Wno-maybe-uninitialized -fsanitize=address,undefined $(DEFS) $(INCS) -Dgettimeofday=fakeGettimeofday \

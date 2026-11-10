@@ -24,6 +24,8 @@ enum class Row : uintptr_t {
   Reminder1,
   Reminder2,
   Reminder3,
+  StreakReminder,
+  ReminderTest,
   Wifi,
   SyncEvery,
   SyncNow,
@@ -36,7 +38,7 @@ enum class Row : uintptr_t {
   Network0,  // + index
 };
 
-enum class Confirm { PowerOff, Unlink, Erase, Forget };
+enum class Confirm { PowerOff, Unlink, Erase, Forget, TestReminder };
 
 int32_t savedScroll = 0;
 lv_obj_t* list = nullptr;
@@ -139,6 +141,13 @@ bool valueOf(Row id, String& value, lv_color_t& color) {
       value = at >= 0 ? clockText(at) : String(tr("Desligado", "Off", "Apagado"));
       // The app's times are shown, not edited, here.
       if (at < 0 || followingApp()) color = theme::faint();
+      return true;
+    }
+    case Row::StreakReminder: {
+      // The app's own nudge: shown, never set here.
+      const int16_t at = S.prefs.remindersFromApp ? S.day.streakRemindAt : static_cast<int16_t>(-1);
+      value = at >= 0 ? clockText(at) : String(tr("Desligado", "Off", "Apagado"));
+      color = theme::faint();
       return true;
     }
     case Row::Update:
@@ -267,7 +276,11 @@ void onRow(lv_event_t* e) {
       break;
     case Row::Brightness: p.brightness = (p.brightness + 1) % 3; break;
     case Row::NightDim: p.nightDim = !p.nightDim; break;
-    case Row::HomeFace: p.homeFace = (p.homeFace + 1) % 5; break;
+    case Row::HomeFace:
+      p.homeFace = (p.homeFace + 1) % 5;
+      // The carousel turns from the new home: every page's dots move.
+      for (bool& dirty : S.dirty) dirty = true;
+      break;
     case Row::Animations: p.animations = !p.animations; break;
     case Row::TouchWakes: p.touchWakes = !p.touchWakes; break;
     case Row::DeskOn: p.deskAlwaysOn = !p.deskAlwaysOn; break;
@@ -287,6 +300,8 @@ void onRow(lv_event_t* e) {
       rememberScroll();
       openTimeEditor(static_cast<int>(id) - static_cast<int>(Row::Reminder0));
       return;
+    case Row::StreakReminder: return;
+    case Row::ReminderTest: rememberScroll(); openConfirm(Confirm::TestReminder); return;
     case Row::Update: rememberScroll(); openUpdate(); return;
     case Row::Wifi: rememberScroll(); openWifi(); return;
     case Row::SyncEvery:
@@ -336,6 +351,8 @@ void buildList() {
   caption(list, tr("LEMBRETES", "REMINDERS", "RECORDATORIOS"));
   row(list, Row::ReminderSource, tr("Horários", "Times", "Horarios"));
   for (int i = 0; i < 4; i++) row(list, static_cast<Row>(static_cast<int>(Row::Reminder0) + i), officeName(i));
+  row(list, Row::StreakReminder, tr("Sequência", "Streak", "Racha"));
+  row(list, Row::ReminderTest, tr("Testar aviso", "Try a reminder", "Probar aviso"), "›", theme::faint());
 
   caption(list, tr("REDE", "NETWORK", "RED"));
   row(list, Row::Wifi, "Wi-Fi", "›", theme::faint());
@@ -432,7 +449,7 @@ void buildTimeEditor(lv_obj_t* scr) {
       [](lv_event_t*) {
         S.prefs.reminder[editOffice] = -1;
         if (S.actions.prefsChanged) S.actions.prefsChanged(S.prefs);
-        openSettings();
+        openSettings(Wipe::Close);
       },
       nullptr);
   pill(
@@ -440,7 +457,7 @@ void buildTimeEditor(lv_obj_t* scr) {
       [](lv_event_t*) {
         S.prefs.reminder[editOffice] = static_cast<int16_t>(editMinutes);
         if (S.actions.prefsChanged) S.actions.prefsChanged(S.prefs);
-        openSettings();
+        openSettings(Wipe::Close);
       },
       nullptr);
 }
@@ -484,6 +501,86 @@ void buildWifi(lv_obj_t* scr) {
 }
 
 void openWifi() { openSub(buildWifi); }
+
+// One wake as a line: "22:00 · sozinha · Completas · tocou · 1 s".
+String wakeLine(const sys::WakeNote& note, bool current) {
+  String line = note.minute >= 0 ? clockText(note.minute) : String("--:--");
+  auto add = [&line](const char* part) {
+    if (!part || !*part) return;
+    line += " · ";
+    line += part;
+  };
+  if (note.afterCrash) add(tr("após uma falha", "after a failure", "tras un fallo"));
+  switch (note.cause) {
+    case sys::WakeCause::Timer: add(tr("sozinha", "by itself", "sola")); break;
+    case sys::WakeCause::Button: add(tr("botão", "button", "botón")); break;
+    case sys::WakeCause::Touch: add(tr("toque", "touch", "toque")); break;
+    case sys::WakeCause::PowerOn: add(tr("ligada", "switched on", "encendida")); break;
+  }
+  for (int i = 0; i < 4; i++) {
+    if (note.due & (sys::kDueMorning << i)) add(officeName(i));
+  }
+  if (note.due & sys::kDueStreak) add(tr("sequência", "streak", "racha"));
+  if (note.due & sys::kDueBell) add(tr("sino", "bell", "campana"));
+  if (note.due & sys::kDueSilence) add(tr("silêncio", "silence", "silencio"));
+  if (note.due & sys::kDueTest) add(tr("teste", "test", "prueba"));
+  switch (note.step) {
+    case sys::WakeStep::Rang: add(tr("tocou", "rang", "sonó")); break;
+    case sys::WakeStep::Skipped: add(tr("já orada", "already prayed", "ya orada")); break;
+    // A wake still on its way is the one being read; an older one left at
+    // one of these steps stopped there.
+    case sys::WakeStep::Woke: if (!current) add(tr("parou no início", "stopped at the start", "se detuvo al inicio")); break;
+    case sys::WakeStep::Syncing: if (!current) add(tr("parou sincronizando", "stopped while syncing", "se detuvo sincronizando")); break;
+    case sys::WakeStep::Lighting: if (!current) add(tr("parou ao acender", "stopped lighting up", "se detuvo al encender")); break;
+    case sys::WakeStep::Slept:
+    case sys::WakeStep::Shown: break;
+  }
+  switch (note.net) {
+    case sys::WakeNet::Answered: add(tr("rede ok", "network ok", "red ok")); break;
+    case sys::WakeNet::NoWifi: add(tr("sem Wi-Fi", "no Wi-Fi", "sin Wi-Fi")); break;
+    case sys::WakeNet::NoAnswer: add(tr("sem resposta", "no answer", "sin respuesta")); break;
+    case sys::WakeNet::TimedOut: add(tr("rede lenta", "network slow", "red lenta")); break;
+    case sys::WakeNet::NotAsked: break;
+  }
+  // How long the radio was on, when it was; or how far in a wake stopped.
+  const bool stopped = !current && (note.step == sys::WakeStep::Woke || note.step == sys::WakeStep::Syncing || note.step == sys::WakeStep::Lighting);
+  if (note.cause == sys::WakeCause::Timer && (note.net != sys::WakeNet::NotAsked || stopped)) {
+    char took[12];
+    snprintf(took, sizeof(took), "%u s", static_cast<unsigned>(note.seconds));
+    add(took);
+  }
+  return line;
+}
+
+// The last wakes, newest first, in small type: what to read out when a
+// reminder did not ring.
+void wakeLines(lv_obj_t* col, const std::vector<sys::WakeNote>& wakes) {
+  if (wakes.empty()) return;
+  lv_obj_t* box = lv_obj_create(col);
+  lv_obj_remove_style_all(box);
+  lv_obj_set_size(box, 320, LV_SIZE_CONTENT);
+  lv_obj_set_flex_flow(box, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(box, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_top(box, 8, 0);
+  lv_obj_set_style_pad_row(box, 3, 0);
+  lv_obj_t* l = lv_label_create(box);
+  lv_label_set_text(l, tr("ÚLTIMOS DESPERTARES", "LAST WAKES", "ÚLTIMOS DESPERTARES"));
+  lv_obj_set_style_text_font(l, theme::tiny(), 0);
+  lv_obj_set_style_text_color(l, theme::faint(), 0);
+  lv_obj_set_style_text_letter_space(l, 2, 0);
+  for (size_t i = 0; i < wakes.size(); i++) {
+    const sys::WakeNote& note = wakes[i];
+    lv_obj_t* v = lv_label_create(box);
+    lv_label_set_text(v, wakeLine(note, i == 0).c_str());
+    lv_obj_set_width(v, 300);
+    lv_label_set_long_mode(v, LV_LABEL_LONG_MODE_WRAP);
+    lv_obj_set_style_text_align(v, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_font(v, theme::small(), 0);
+    // What rang is said plainly; a wake that stopped half way, in red.
+    const bool stopped = i > 0 && (note.step == sys::WakeStep::Woke || note.step == sys::WakeStep::Syncing || note.step == sys::WakeStep::Lighting);
+    lv_obj_set_style_text_color(v, stopped || note.afterCrash ? theme::red() : (note.step == sys::WakeStep::Rang ? theme::fg() : theme::dim()), 0);
+  }
+}
 
 void aboutLine(lv_obj_t* col, const char* label, const char* value) {
   lv_obj_t* box = lv_obj_create(col);
@@ -537,6 +634,15 @@ void buildAbout(lv_obj_t* scr) {
   aboutLine(col, tr("HOJE", "TODAY", "HOY"), buf);
   snprintf(buf, sizeof(buf), "%+ld ppm", static_cast<long>(info.clockDriftPpm));
   aboutLine(col, tr("DESVIO DO RELÓGIO", "CLOCK DRIFT", "DESVÍO DEL RELOJ"), buf);
+  aboutLine(col, tr("ACORDA SOZINHA", "WAKES BY ITSELF", "DESPIERTA SOLA"),
+            info.nextWake.isEmpty() ? tr("só com um botão", "only by a button", "solo con un botón") : info.nextWake.c_str());
+  wakeLines(col, info.wakes);
+  if (!info.siteProblem.isEmpty()) aboutLine(col, tr("FOTOS E TEXTOS", "PICTURES AND TEXTS", "FOTOS Y TEXTOS"), info.siteProblem.c_str());
+  if (info.freeMemoryKb > 0) {
+    snprintf(buf, sizeof(buf), tr("%lu KB livres, mínimo %lu", "%lu KB free, lowest %lu", "%lu KB libres, mínimo %lu"),
+             static_cast<unsigned long>(info.freeMemoryKb), static_cast<unsigned long>(info.lowestMemoryKb));
+    aboutLine(col, tr("MEMÓRIA INTERNA", "INTERNAL MEMORY", "MEMORIA INTERNA"), buf);
+  }
   aboutLine(col, tr("PLACA", "BOARD", "PLACA"), info.board.c_str());
 }
 
@@ -577,6 +683,13 @@ void buildConfirm(lv_obj_t* scr) {
       body = tr("Ele deixa de entrar nela sozinho.", "It stops joining it by itself.", "Deja de entrar en ella solo.");
       action = tr("Esquecer", "Forget", "Olvidar");
       break;
+    case Confirm::TestReminder:
+      title = tr("Testar o aviso?", "Try a reminder?", "¿Probar el aviso?");
+      body = tr("A bússola dorme agora e, em um minuto, acorda sozinha e toca. Deixe-a quieta até lá.",
+                "The compass sleeps now and, in a minute, wakes by itself and rings. Leave it be until then.",
+                "La brújula se duerme ahora y, en un minuto, despierta sola y suena. Déjela quieta hasta entonces.");
+      action = tr("Testar", "Try", "Probar");
+      break;
   }
   text(scr, title, theme::large(), theme::fg(), 118, 0, 320);
   text(scr, body, theme::body(), theme::dim(), 172, 0, 310);
@@ -605,6 +718,9 @@ void buildConfirm(lv_obj_t* scr) {
           case Confirm::Forget:
             if (S.actions.forgetNetwork) S.actions.forgetNetwork(pendingIndex);
             openWifi();
+            break;
+          case Confirm::TestReminder:
+            if (S.actions.testReminder) S.actions.testReminder();
             break;
         }
       },
@@ -672,6 +788,12 @@ void buildUpdate(lv_obj_t* scr) {
                         "busca sola una vez al día, enchufada"); break;
   }
   text(scr, state, theme::small(), color, 196, 0, 270);
+  // Why, for whoever is going to ask for help with it.
+  if (st.update == UpdateState::Failed && !st.updateDetail.isEmpty()) {
+    lv_obj_t* why = text(scr, st.updateDetail.c_str(), theme::tiny(), theme::faint(), 222, 0, 280);
+    lv_label_set_long_mode(why, LV_LABEL_LONG_MODE_DOTS);
+    lv_obj_set_height(why, 40);
+  }
   if (st.update != UpdateState::Checking) {
     lv_obj_t* look = pill(
         scr, tr("Procurar agora", "Look now", "Buscar ahora"), false,
@@ -685,15 +807,17 @@ void buildUpdate(lv_obj_t* scr) {
 
 }  // namespace
 
-void openSettings() {
+void openSettings(Wipe wipe) {
   const bool fresh = S.mode != Mode::Settings && S.mode != Mode::SettingsSub;
   if (fresh) savedScroll = 0;
   S.mode = Mode::Settings;
-  transition([]() {
-    if (S.mode != Mode::Settings) return;
-    buildList();
-    load(S.settings);
-  });
+  transition(
+      []() {
+        if (S.mode != Mode::Settings) return;
+        buildList();
+        load(S.settings);
+      },
+      wipe);
 }
 
 // Brings the values on screen up to date: after a tap, or when the status

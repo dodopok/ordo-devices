@@ -75,6 +75,10 @@ Arrastar em qualquer direção percorre um carrossel circular: para cima ou
 para a esquerda avança, para baixo ou para a direita volta, e depois da
 última vem a primeira. O botão **BOOT** também avança.
 
+A tela escolhida em Ajustes › Tela inicial é a primeira do carrossel e as
+outras seguem na ordem de sempre: escolher a Bússola, por exemplo, só leva a
+"Agora" para o segundo lugar.
+
 | Tela | O que mostra |
 | --- | --- |
 | Agora | hora, data, tempo litúrgico, nome do dia e o ofício que a hora pede |
@@ -89,11 +93,15 @@ No topo de todas elas ficam o Wi-Fi (os arcos dizem o sinal da última rede
 em que entrou; pulsam enquanto sincroniza) e a bateria com a porcentagem
 (dourada carregando, vermelha abaixo de 10%).
 
-Trocar de tela escurece e clareia o painel num piscar: a tela nova é
-pintada no escuro, então não se vê a varredura de cima para baixo. Ao
-chegar, cada tela tem a sua entrada: o marcador do anel percorre o último
-trecho do ano até hoje, as festas acendem em volta, os ofícios chegam um a
-um, as leituras descem em cascata. Dá para desligar em Ajustes › Animações.
+Trocar de tela não apaga nada: a tela nova é desenhada fora de vista e
+entra por cima da anterior, como uma cortina, na direção do gesto. Arrastou
+para cima, ela sobe de baixo; para o lado, vem do lado; abrir uma ferramenta
+abre do meio para fora; voltar fecha das bordas para o meio. A tela anterior
+fica acesa até a cortina passar. Só ao acordar a luz sobe do escuro, porque
+aí não há nada aceso para cobrir. Ao chegar, cada tela tem a sua entrada: o
+marcador do anel percorre o último trecho do ano até hoje, as festas acendem
+em volta, os ofícios chegam um a um, as leituras descem em cascata. Dá para
+desligar em Ajustes › Animações.
 
 - **Contas**: terço anglicano (33 contas, com a invitatória e as cruciformes)
   ou corda de 33, 50 ou 100 para a Oração de Jesus. BOOT ou um toque conta
@@ -123,9 +131,9 @@ Em Mais › Ajustes, direto na bússola:
 | --- | --- |
 | Tela | apaga em 10, 15, 30 ou 60 segundos; brilho baixo, médio ou alto; escurecer à noite; tela inicial (Agora, Bússola, Leituras, Ofícios ou Semana); animações; toque acorda; acesa na tomada |
 | Som | ligado ou não; volume; sino às 6h, 12h e 18h |
-| Lembretes | horários "do app" (os que você marcou no Ordo, quando há algum) ou "daqui" (um horário para cada ofício, ajustado na bússola); toca só se o ofício ainda não foi orado |
+| Lembretes | horários "do app" (os que você marcou no Ordo, quando há algum) ou "daqui" (um horário para cada ofício, ajustado na bússola); toca só se o ofício ainda não foi orado. Seguindo o app, vem junto o aviso de **sequência**: às 22h, se nenhum ofício foi orado no dia. **Testar aviso** põe a bússola para dormir e a faz tocar um minuto depois: é como ver, sem esperar a noite, que ela acorda sozinha |
 | Rede | redes Wi-Fi guardadas (até cinco) e adicionar outra; sincronizar a cada 2, 4, 6 ou 12 horas, ou só ao acordar; sincronizar agora |
-| Aparelho | atualização (procurar e instalar um firmware novo); sobre (versão, bateria, última sincronização, quantas vezes acordou); desligar; desvincular; apagar tudo |
+| Aparelho | atualização (procurar e instalar um firmware novo); sobre (versão, bateria, última sincronização, quantas vezes acordou, a que horas acorda sozinha, os últimos despertares e até onde cada um chegou, memória interna livre, último erro ao buscar fotos); desligar; desvincular; apagar tudo |
 
 ### A comemoração do dia
 
@@ -167,8 +175,11 @@ A bússola foi feita para dormir:
   esperar rede. Só então, se o dado tem mais de meia hora, liga o Wi-Fi por
   alguns segundos e atualiza.
 - Sozinha, acorda logo depois da meia-noite, no intervalo de sincronização
-  escolhido e na hora de cada lembrete, sem acender a tela a não ser para
-  tocar.
+  escolhido, dez minutos antes de cada lembrete e na hora dele, sem acender
+  a tela a não ser para tocar.
+- O despertar de dez minutos antes só sincroniza: traz os ofícios já orados
+  e acerta o relógio. Na hora do lembrete ela toca com o que tem guardado,
+  sem ligar o Wi-Fi: o sino não depende de rede.
 - Longe de qualquer rede conhecida, não insiste: mostra o que tem e tenta de
   novo mais tarde.
 - **Na tomada** ela vira relógio de mesa: tela acesa (mais fraca depois de
@@ -187,9 +198,9 @@ deles o anel do ano ainda diz o tempo e a cor. Os ofícios orados aparecem
 como estavam na última sincronização.
 
 **Ainda não medido.** O consumo em cada estado foi estimado, não medido; os
-números e como medi-los estão no plano. A 0.2 foi gravada e usada numa
-1.75C; a 0.3 compila para as duas placas e passa no simulador, mas ainda não
-foi gravada num aparelho.
+números e como medi-los estão no plano. A 0.4.0 foi gravada e usada numa
+1.75C; a 0.4.2 compila para as duas placas e passa no simulador, mas ainda
+não foi gravada num aparelho.
 
 ### Se der errado
 
@@ -202,6 +213,8 @@ foi gravada num aparelho.
 | Wi-Fi apagado, ponto cinza | Nenhuma rede guardada, ou a última tentativa não achou nenhuma | Ajustes › Wi-Fi |
 | Data em vez de hora | Ainda não sincronizou desde que foi ligada | Sincronize: Ajustes › Sincronizar agora |
 | Comemoração sem foto | O CMS não tem imagem para ela, a imagem é pequena demais, a foto ainda não foi baixada, ou a API está sem `DEVICE_CONTENT_SECRET` | Espere a próxima sincronização; se continuar, veja `site/README.md` |
+| "não deu para procurar agora" na Atualização | Sem Wi-Fi, ou o site não respondeu. A linha pequena embaixo diz o motivo: `sem Wi-Fi`, `HTTP 404`, `conexão -1, TLS -0x2700` (certificado não confiado), `TLS -0x7F00` (faltou memória) | Tente perto do Wi-Fi. Persistindo, o código dessa linha diz onde olhar |
+| Aviso no celular e nada na bússola | O horário não chegou à bússola, "Horários" está em "Daqui", ou ela não chegou a tocar | Ajustes › Lembretes mostra os horários que ela conhece (ofícios e sequência) e tem o **Testar aviso**: ela dorme e toca em um minuto. Sobre › "acorda sozinha" mostra o próximo despertar, e "últimos despertares" diz, de cada vez que acordou, a hora, o que estava para tocar e até onde chegou (`22:00 · sozinha · Completas · tocou`; em vermelho, um despertar que parou no meio ou veio depois de uma falha) |
 | "Não atualizou: o arquivo não conferiu" | O firmware baixado não bate com o manifesto, ou não está assinado e este firmware exige assinatura | Nada foi mudado na bússola. Publique a versão de novo com `tools/release.py build` |
 | Não acorda | Bateria no fim, ou desligada pelo PWR | Ligue no cabo; aperte PWR |
 
@@ -233,7 +246,7 @@ pio pkg install -e amoled175c   # uma vez: baixa o LVGL e o ArduinoJson
 make -C sim shots               # PNGs em sim/out/
 make -C sim movie               # sim/out/ordo.gif: um passeio pelas telas, com as transições
 make -C sim check               # toca em todos os controles com verificação de memória
-make -C sim test                # relógio, agenda de acordar, lembretes, o dia sem rede, o texto e a foto da comemoração, o manifesto
+make -C sim test                # relógio, agenda de acordar, lembretes, o rastro dos despertares, as faixas da troca de tela, o dia sem rede, o texto e a foto da comemoração, o manifesto
 ```
 
 A página da comemoração precisa de uma foto. As de verdade são do CMS, então
@@ -262,7 +275,7 @@ compass/
     ├── app/controller.*    acordar, sincronizar, tocar, dormir
     ├── app/schedule.*      quando acordar sozinho e o que tocar (testado em sim/)
     ├── board/              tela (CO5300), toque (CST9217), energia e sono (AXP2101), sino (ES8311)
-    ├── sys/                relógio emprestado da API; estado que sobrevive ao sono
+    ├── sys/                relógio emprestado da API; estado que sobrevive ao sono; o rastro dos últimos despertares
     ├── net/                Wi-Fi com várias redes, página de configuração, cliente da API, raízes TLS
     ├── net/site.*, ota.*   bussola.oficio.app: foto e texto da comemoração, e o firmware novo
     ├── content/art.*       a foto da comemoração, de JPEG para pixels
@@ -270,7 +283,7 @@ compass/
     ├── model/content.*     o texto da comemoração, o manifesto do firmware, versões
     ├── store/settings.*    NVS: token, ajustes, redes, último payload
     ├── store/content.*     LittleFS: fotos e textos das comemorações
-    └── ui/                 as telas, as fontes e o tema
+    └── ui/                 as telas, as fontes e o tema; wipe.h: a ordem das faixas de uma troca de tela
 ```
 
 ## O app do Miblo Desk
