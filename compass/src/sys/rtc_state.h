@@ -39,6 +39,9 @@ struct RtcState {
 
   // A time of silence under way.
   int64_t silenceEndsRaw;   // raw seconds; 0: none
+  // A reminder asked for from the settings, to see the compass wake by
+  // itself and ring: when it is due.
+  int64_t testAtRaw;        // raw seconds; 0: none
 
   // Wi-Fi fast reconnect.
   char ssid[33];

@@ -49,6 +49,10 @@ Due takeDue(const Moment& now, const Plan& plan, sys::RtcState& rtc) {
     rtc.silenceEndsRaw = 0;
     what.silence = true;
   }
+  if (rtc.testAtRaw != 0 && now.raw >= rtc.testAtRaw) {
+    rtc.testAtRaw = 0;
+    what.test = true;
+  }
   if (!now.clockValid) return what;
 
   const int32_t day = localDay(now);
@@ -83,6 +87,18 @@ Due takeDue(const Moment& now, const Plan& plan, sys::RtcState& rtc) {
   return what;
 }
 
+bool reminderWithin(const Moment& now, const Plan& plan, int minutes) {
+  if (!now.clockValid) return false;
+  const int minute = minuteOfDay(now);
+  for (int i = 0; i <= kStreakSlot; i++) {
+    const int at = i == kStreakSlot ? plan.streakReminder : plan.reminder[i];
+    if (at < 0) continue;
+    const int ahead = (at + 1440 - minute) % 1440;
+    if (ahead > 0 && ahead <= minutes) return true;
+  }
+  return false;
+}
+
 int64_t secondsToNextWake(const Moment& now, const Plan& plan, const sys::RtcState& rtc) {
   int64_t best = INT64_MAX;
   // Never sooner than a few seconds: a wake that lands a moment early just
@@ -93,6 +109,7 @@ int64_t secondsToNextWake(const Moment& now, const Plan& plan, const sys::RtcSta
   };
 
   if (rtc.silenceEndsRaw != 0) consider(rtc.silenceEndsRaw - now.raw);
+  if (rtc.testAtRaw != 0) consider(rtc.testAtRaw - now.raw);
 
   if (now.clockValid) {
     const int minute = minuteOfDay(now);
@@ -104,6 +121,9 @@ int64_t secondsToNextWake(const Moment& now, const Plan& plan, const sys::RtcSta
       // Its minute has come and it has not rung: in a moment, not tomorrow.
       if (minute >= at && minute - at <= kReminderGraceMinutes && !rung) consider(5);
       else consider(untilLocalMinute(now, at));
+      // And a little before it, to synchronise (see kPrepMinutes). Inside
+      // that stretch already, this answers tomorrow's and changes nothing.
+      if (plan.canSync && plan.syncHours > 0) consider(untilLocalMinute(now, (at + 1440 - kPrepMinutes) % 1440));
     }
     if (plan.hourBell) {
       for (int i = 0; i < 3; i++) {

@@ -49,8 +49,12 @@ namespace cfg {
 constexpr uint32_t kStaleAfterSeconds = 30 * 60;
 // On mains power the compass behaves as a desk clock and asks this often.
 constexpr uint32_t kDeskRefreshSeconds = 5 * 60;
-// A background wake gives the network this long before going back to sleep.
-constexpr uint32_t kBackgroundSyncMs = 20 * 1000;
+// A wake nobody is watching gives a whole sync (joining the Wi-Fi, the day,
+// the pictures the days ahead still lack) this long before going back to
+// sleep. A good one takes five to ten seconds.
+constexpr uint32_t kBackgroundSyncMs = 60 * 1000;
+// "Testar aviso" in the settings: the compass sleeps and rings after this.
+constexpr int64_t kTestReminderSeconds = 60;
 // After the day turns, wait a little so the API is already on the new day.
 constexpr uint32_t kAfterMidnightSeconds = 120;
 // Failed foreground syncs are not retried before this.

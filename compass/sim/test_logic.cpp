@@ -17,6 +17,8 @@
 #include "model/today.h"
 #include "sys/clock.h"
 #include "sys/rtc_state.h"
+#include "sys/wake_trail.h"
+#include "ui/wipe.h"
 
 namespace {
 
@@ -173,6 +175,17 @@ void testDue() {
   blind.raw = 500;
   CHECK(app::takeDue(blind, plan, rtc).silence);
   CHECK(!app::takeDue(blind, plan, rtc).silence);
+
+  // So does the reminder asked for from the settings: once, a minute on.
+  rtc.testAtRaw = 500 + 60;
+  blind.raw = 559;
+  CHECK(!app::takeDue(blind, plan, rtc).test);
+  blind.raw = 561;
+  due = app::takeDue(blind, plan, rtc);
+  CHECK(due.test);
+  CHECK(due.any());
+  CHECK(!app::takeDue(blind, plan, rtc).test);
+  CHECK(!app::Due().any());
 }
 
 void testSchedule() {
@@ -206,6 +219,60 @@ void testSchedule() {
     CHECK_EQ(app::secondsToNextWake(at(local(22, 0, 1), 100), nudge, fresh), 5);
     app::takeDue(at(local(22, 0, 1), 100), nudge, fresh);
     CHECK_EQ(app::secondsToNextWake(at(local(22, 0, 1), 100), nudge, fresh), 86400 - 1);
+  }
+
+  // The reminder asked for from the settings wakes it by the raw clock.
+  {
+    sys::RtcState fresh = {};
+    fresh.firedDay = -1;
+    app::Plan none;
+    none.syncHours = 0;
+    app::Moment blind;
+    blind.raw = 1000;
+    fresh.testAtRaw = 1060;
+    CHECK_EQ(app::secondsToNextWake(blind, none, fresh), 60);
+    CHECK_EQ(app::secondsToNextWake(at(local(10, 0), 1000), none, fresh), 60);
+  }
+
+  // Ten minutes before a reminder it wakes to synchronise, so that the
+  // reminder itself rings without waiting for a network.
+  {
+    sys::RtcState fresh = {};
+    fresh.firedDay = -1;
+    fresh.lastAnswerRaw = 99000;  // just synced: the four-hourly one is far
+    app::Plan night;
+    night.canSync = true;
+    night.syncHours = 4;
+    night.reminder[3] = 22 * 60;
+    CHECK_EQ(app::secondsToNextWake(at(local(20, 0), 99100), night, fresh), 110 * 60);
+    CHECK(!app::reminderWithin(at(local(20, 0), 99100), night, app::kPrepMinutes + 2));
+    // At that wake: the reminder is near, and next comes the reminder.
+    CHECK(app::reminderWithin(at(local(21, 50, 2), 99100), night, app::kPrepMinutes + 2));
+    CHECK_EQ(app::secondsToNextWake(at(local(21, 50, 2), 99100), night, fresh), 10 * 60 - 2);
+    CHECK_EQ(app::secondsToNextWake(at(local(21, 55), 99100), night, fresh), 5 * 60);
+    // A little early (the timer is not a clock): still near, still the reminder next.
+    CHECK(app::reminderWithin(at(local(21, 49, 40), 99100), night, app::kPrepMinutes + 2));
+    // At its minute it is no longer "ahead".
+    CHECK(!app::reminderWithin(at(local(22, 0, 1), 99100), night, app::kPrepMinutes + 2));
+    // The streak reminder counts, and so does one across midnight.
+    app::Plan late;
+    late.canSync = true;
+    late.reminder[0] = 5;  // 00:05
+    late.streakReminder = 22 * 60;
+    CHECK(app::reminderWithin(at(local(23, 58), 99100), late, app::kPrepMinutes + 2));
+    CHECK(app::reminderWithin(at(local(21, 51), 99100), late, app::kPrepMinutes + 2));
+    CHECK(!app::reminderWithin(at(local(12, 0), 99100), late, app::kPrepMinutes + 2));
+    CHECK_EQ(app::secondsToNextWake(at(local(23, 50), 99100), late, fresh), 5 * 60);  // 23:55, for the one at 00:05
+    // Never syncing by itself, or with no network to sync on: no such wake.
+    night.syncHours = 0;
+    CHECK_EQ(app::secondsToNextWake(at(local(20, 0), 99100), night, fresh), 2 * 3600);
+    night.syncHours = 4;
+    night.canSync = false;
+    CHECK_EQ(app::secondsToNextWake(at(local(20, 0), 99100), night, fresh), 2 * 3600);
+    // No clock: nothing is "near".
+    app::Moment blind;
+    blind.raw = 5;
+    CHECK(!app::reminderWithin(blind, late, 1440));
   }
 
   // Linked and syncing every four hours, last answer an hour ago: three hours,
@@ -265,17 +332,136 @@ void testSchedule() {
     raw += sleep;
     wakes++;
     const app::Due due = app::takeDue(at(utc, raw), plan, rtc);
-    if (due.reminder >= 0) reminders++;
     if (due.bellHour >= 0) bells++;
-    if (raw - rtc.lastAnswerRaw >= 4 * 3600 - 300 || due.reminder >= 0 || app::localDay(at(utc, raw)) != app::localDay(at(utc - sleep, raw))) {
+    if (due.reminder >= 0) {
+      reminders++;
+      // It rings from what a sync a few minutes ago left on record.
+      CHECK(raw - rtc.lastAnswerRaw <= (app::kPrepMinutes + 1) * 60);
+      continue;
+    }
+    // As the controller does on a wake with nothing to ring (background()).
+    const bool periodic = raw - rtc.lastAnswerRaw >= 4 * 3600 - 300;
+    const bool beforeReminder = app::reminderWithin(at(utc, raw), plan, app::kPrepMinutes + 2) && raw - rtc.lastAnswerRaw >= 5 * 60;
+    const bool dayTurned = app::localDay(at(utc, raw)) != app::localDay(at(utc - sleep, raw));
+    if (!due.any() && (periodic || beforeReminder || dayTurned)) {
       rtc.lastAnswerRaw = raw;  // the sync answered
       syncs++;
     }
   }
   CHECK_EQ(reminders, 2);
   CHECK_EQ(bells, 3);
-  CHECK(wakes <= 12);
+  CHECK(wakes <= 14);
   CHECK(syncs >= 5 && syncs <= 9);
+}
+
+// The lines the "Sobre" screen reads out about the last wakes.
+void testTrail() {
+  using sys::WakeCause, sys::WakeStep;
+  sys::trailBegin();
+  CHECK_EQ(sys::trailCount(), 0);
+
+  sys::trailOpen(21 * 60 + 50, WakeCause::Timer, false).step = WakeStep::Slept;
+  sys::trailSeal();
+  sys::WakeNote& rang = sys::trailOpen(22 * 60, WakeCause::Timer, false);
+  rang.due = static_cast<uint8_t>(sys::kDueMorning << 3);
+  rang.step = WakeStep::Rang;
+  sys::trailSeal();
+  CHECK_EQ(sys::trailCount(), 2);
+  CHECK_EQ(sys::trailAt(0).minute, 22 * 60);
+  CHECK_EQ(sys::trailAt(1).minute, 21 * 60 + 50);
+
+  // Glances by a button that found nothing to do share one line...
+  sys::trailOpen(22 * 60 + 5, WakeCause::Button, false).step = WakeStep::Shown;
+  sys::trailSeal();
+  sys::trailOpen(22 * 60 + 9, WakeCause::Button, false).step = WakeStep::Shown;
+  sys::trailSeal();
+  sys::trailOpen(22 * 60 + 12, WakeCause::Touch, false).step = WakeStep::Shown;
+  sys::trailSeal();
+  CHECK_EQ(sys::trailCount(), 3);
+  CHECK_EQ(sys::trailAt(0).minute, 22 * 60 + 12);
+  CHECK_EQ(sys::trailAt(1).minute, 22 * 60);
+  // ...but not the one after a restart nobody asked for.
+  sys::trailOpen(22 * 60 + 20, WakeCause::Button, true).step = WakeStep::Shown;
+  sys::trailSeal();
+  CHECK_EQ(sys::trailCount(), 4);
+  CHECK(sys::trailAt(0).afterCrash);
+  // A wake that stopped half way keeps its line under the glances that follow.
+  sys::trailOpen(23 * 60, WakeCause::Timer, false).step = WakeStep::Syncing;
+  sys::trailSeal();
+  sys::trailOpen(23 * 60 + 30, WakeCause::Button, false).step = WakeStep::Shown;
+  sys::trailSeal();
+  CHECK_EQ(sys::trailCount(), 6);
+  CHECK(sys::trailAt(1).step == WakeStep::Syncing);
+
+  // The oldest lines make room; the newest is always first.
+  for (int i = 0; i < 2 * sys::kWakeNotes; i++) {
+    sys::trailOpen(static_cast<int16_t>(i), WakeCause::Timer, false).step = WakeStep::Slept;
+    sys::trailSeal();
+  }
+  CHECK_EQ(sys::trailCount(), sys::kWakeNotes);
+  for (int back = 0; back < sys::kWakeNotes; back++) CHECK_EQ(sys::trailAt(back).minute, 2 * sys::kWakeNotes - 1 - back);
+
+  // The memory survives a restart, and noise in it is thrown away whole.
+  sys::trailBegin();
+  CHECK_EQ(sys::trailCount(), sys::kWakeNotes);
+  sys::trailNow().minute = 777;  // changed behind its back, not sealed
+  sys::trailBegin();
+  CHECK_EQ(sys::trailCount(), 0);
+}
+
+// A change of screen: the strips laid over the old screen, in order.
+void testWipe() {
+  const int side = 466;
+  for (ui::Wipe wipe : {ui::Wipe::Up, ui::Wipe::Down, ui::Wipe::Left, ui::Wipe::Right, ui::Wipe::Open, ui::Wipe::Close}) {
+    const bool upright = wipe == ui::Wipe::Left || wipe == ui::Wipe::Right;
+    std::vector<int> covered(side, 0);
+    const int steps = ui::wipeSteps(wipe, side);
+    for (int step = 0; step < steps; step++) {
+      ui::WipeStrip strips[2];
+      const int count = ui::wipeStrips(wipe, side, step, strips);
+      CHECK(count >= 1 && count <= 2);
+      for (int i = 0; i < count; i++) {
+        const ui::WipeStrip& strip = strips[i];
+        // The panel takes windows that start on an even line and are an even number of lines.
+        CHECK(strip.x % 2 == 0 && strip.y % 2 == 0 && strip.w % 2 == 0 && strip.h % 2 == 0);
+        CHECK(strip.w > 0 && strip.h > 0 && strip.x + strip.w <= side && strip.y + strip.h <= side);
+        CHECK_EQ(upright ? strip.h : strip.w, side);
+        const int from = upright ? strip.x : strip.y;
+        const int lines = upright ? strip.w : strip.h;
+        for (int line = from; line < from + lines; line++) covered[line]++;
+      }
+    }
+    // Every line of the glass, once.
+    for (int line = 0; line < side; line++) CHECK_EQ(covered[line], 1);
+    ui::WipeStrip none[2];
+    CHECK_EQ(ui::wipeStrips(wipe, side, steps, none), 0);
+    CHECK_EQ(ui::wipeStrips(wipe, side, -1, none), 0);
+  }
+  // Where each begins: under the finger.
+  ui::WipeStrip first[2];
+  ui::wipeStrips(ui::Wipe::Up, side, 0, first);
+  CHECK_EQ(first[0].y + first[0].h, side);
+  ui::wipeStrips(ui::Wipe::Down, side, 0, first);
+  CHECK_EQ(first[0].y, 0);
+  ui::wipeStrips(ui::Wipe::Left, side, 0, first);
+  CHECK_EQ(first[0].x + first[0].w, side);
+  ui::wipeStrips(ui::Wipe::Right, side, 0, first);
+  CHECK_EQ(first[0].x, 0);
+  CHECK_EQ(ui::wipeStrips(ui::Wipe::Open, side, 0, first), 2);
+  CHECK_EQ(first[0].y + first[0].h, first[1].y);  // the two meet in the middle
+  ui::wipeStrips(ui::Wipe::Close, side, 0, first);
+  CHECK(first[0].y == 0 || first[0].y + first[0].h == side);
+
+  // The pace: something at once, never backwards, all of it by the end.
+  const int steps = ui::wipeSteps(ui::Wipe::Up, side);
+  int before = 0;
+  for (uint32_t ms = 0; ms <= ui::kWipeMs + 20; ms++) {
+    const int due = ui::wipeStepsDue(steps, ms);
+    CHECK(due >= before && due >= 1 && due <= steps);
+    before = due;
+  }
+  CHECK_EQ(ui::wipeStepsDue(steps, ui::kWipeMs), steps);
+  CHECK(ui::wipeStepsDue(steps, ui::kWipeMs / 2) > steps / 2);  // quick off the mark
 }
 
 void testModel(const char* path) {
@@ -476,6 +662,8 @@ int main(int argc, char** argv) {
   testClock();
   testDue();
   testSchedule();
+  testTrail();
+  testWipe();
   testModel(argc > 1 ? argv[1] : "sample_today.json");
   testContent();
   if (failures) {

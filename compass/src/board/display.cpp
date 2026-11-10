@@ -24,11 +24,41 @@ Arduino_CO5300* gfx = nullptr;
 lv_display_t* disp = nullptr;
 uint8_t brightness = 0;
 
+// The stage of a screen change: one whole frame, and room for one upright
+// strip gathered from it. 450 KB of the 8 MB of external memory, taken the
+// first time a screen changes and kept.
+uint16_t* stage = nullptr;
+uint16_t* upright = nullptr;
+bool staging = false;
+// LVGL's clock: the processor's, less the time spent changing screens.
+uint32_t clockHeldMs = 0;
+uint32_t clockStoppedAt = 0;
+
 void flushCb(lv_display_t* d, const lv_area_t* area, uint8_t* px_map) {
   const int32_t w = lv_area_get_width(area);
   const int32_t h = lv_area_get_height(area);
-  gfx->draw16bitRGBBitmap(area->x1, area->y1, reinterpret_cast<uint16_t*>(px_map), w, h);
+  if (staging) {
+    const uint16_t* from = reinterpret_cast<const uint16_t*>(px_map);
+    for (int32_t y = area->y1; y <= area->y2; y++, from += w) {
+      memcpy(stage + y * LCD_WIDTH + area->x1, from, static_cast<size_t>(w) * sizeof(uint16_t));
+    }
+  } else {
+    gfx->draw16bitRGBBitmap(area->x1, area->y1, reinterpret_cast<uint16_t*>(px_map), w, h);
+  }
   lv_display_flush_ready(d);
+}
+
+// One strip of the stage onto the glass.
+void layStrip(const ui::WipeStrip& strip) {
+  if (strip.w == LCD_WIDTH) {
+    gfx->draw16bitRGBBitmap(0, strip.y, stage + strip.y * LCD_WIDTH, LCD_WIDTH, strip.h);
+    return;
+  }
+  // An upright strip is not one stretch of the frame: gathered row by row.
+  for (int32_t y = 0; y < LCD_HEIGHT; y++) {
+    memcpy(upright + y * strip.w, stage + y * LCD_WIDTH + strip.x, static_cast<size_t>(strip.w) * sizeof(uint16_t));
+  }
+  gfx->draw16bitRGBBitmap(strip.x, 0, upright, strip.w, LCD_HEIGHT);
 }
 
 // The CO5300 addresses pixels in pairs: a window must start on an even
@@ -44,7 +74,9 @@ void roundAreaCb(lv_event_t* e) {
   if (area->y2 >= LCD_HEIGHT) area->y2 = LCD_HEIGHT - 1;
 }
 
-uint32_t tickCb() { return millis(); }
+// Never backwards: while a screen changes it stands at the moment the change
+// began, and goes on from there.
+uint32_t tickCb() { return staging ? clockStoppedAt : millis() - clockHeldMs; }
 
 }  // namespace
 
@@ -107,5 +139,45 @@ void displayHoldForSleep() {
 }
 
 lv_display_t* display() { return disp; }
+
+bool displayStageBegin() {
+  if (!gfx || staging) return false;
+  if (!stage) {
+    stage = static_cast<uint16_t*>(heap_caps_malloc(static_cast<size_t>(LCD_WIDTH) * LCD_HEIGHT * sizeof(uint16_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    upright = static_cast<uint16_t*>(heap_caps_malloc(static_cast<size_t>(ui::kWipeLines) * LCD_HEIGHT * sizeof(uint16_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (!stage || !upright) {
+      free(stage);
+      free(upright);
+      stage = nullptr;
+      upright = nullptr;
+      return false;
+    }
+  }
+  clockStoppedAt = millis() - clockHeldMs;
+  staging = true;
+  return true;
+}
+
+void displayStageReveal(ui::Wipe wipe) {
+  if (!staging) return;
+  const int steps = ui::wipeSteps(wipe, LCD_WIDTH);
+  const uint32_t started = millis();
+  int laid = 0;
+  while (laid < steps) {
+    const int due = ui::wipeStepsDue(steps, millis() - started);
+    if (laid >= due) {
+      delay(1);
+      continue;
+    }
+    for (; laid < due; laid++) {
+      ui::WipeStrip strips[2];
+      const int count = ui::wipeStrips(wipe, LCD_WIDTH, laid, strips);
+      for (int i = 0; i < count; i++) layStrip(strips[i]);
+    }
+  }
+  // The clock goes on from where it stopped.
+  clockHeldMs = millis() - clockStoppedAt;
+  staging = false;
+}
 
 }  // namespace board

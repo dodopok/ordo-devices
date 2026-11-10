@@ -225,6 +225,22 @@ void showStreakReminder() {
   present(scr);
 }
 
+void showReminderTest() {
+  lv_obj_t* scr = begin(true, 25);
+  ringArc(scr, 452, 5, 0.0f, 1.0f, theme::gold());
+  breathe(bellIcon(scr, 96, theme::gold()), LV_OPA_30, [](void* obj, int32_t v) {
+    lv_obj_set_style_opa(static_cast<lv_obj_t*>(obj), static_cast<lv_opa_t>(v), 0);
+  });
+  text(scr, tr("Aviso de teste", "Test reminder", "Aviso de prueba"), theme::large(), theme::fg(), 152, 0, 320);
+  text(scr, tr("A bússola acordou sozinha e tocou. Os avisos dos ofícios fazem o mesmo caminho.",
+               "The compass woke by itself and rang. The offices' reminders take the same path.",
+               "La brújula despertó sola y sonó. Los avisos de los oficios hacen el mismo camino."),
+       theme::body(), theme::dim(), 208, 0, 300);
+  text(scr, tr("toque para fechar", "tap to close", "toque para cerrar"), theme::tiny(), theme::faint(), 372, 0, 240);
+  tapDismisses(scr);
+  present(scr);
+}
+
 void showHourBell(int hour) {
   lv_obj_t* scr = begin(true, 10);
   const lv_color_t accent = S.day.day.hasColor ? S.day.day.color : theme::gold();
@@ -288,7 +304,7 @@ void showUpdating(const String& version, int percent) {
 }
 
 void dismissNotice() {
-  if (S.dayShown) showPage(S.page);
+  if (S.dayShown) showPage(S.page, Wipe::Close);
 }
 
 }  // namespace ui

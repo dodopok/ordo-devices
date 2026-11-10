@@ -133,9 +133,11 @@ void breathe(lv_obj_t* obj, lv_opa_t low, lv_anim_exec_xcb_t exec) {
 // ---------------------------------------------------------------- entrances
 
 namespace {
-// Roughly when the light is back after a screen change: an entrance that
-// began with the screen still dark would be over before anyone saw it.
-constexpr uint32_t kEntranceDelay = 150;
+// How long after its screen is built an entrance begins. After a wake the
+// light is still rising: an entrance that began in the dark would be over
+// before anyone saw it. After a change of screen it follows the wipe at
+// once (LVGL's clock stands still while a wipe plays).
+uint32_t entranceDelay() { return S.shownOnce ? 40 : 150; }
 
 void setOpa(void* obj, int32_t v) { lv_obj_set_style_opa(static_cast<lv_obj_t*>(obj), static_cast<lv_opa_t>(v), 0); }
 void setShift(void* obj, int32_t v) { lv_obj_set_style_translate_y(static_cast<lv_obj_t*>(obj), v, 0); }
@@ -151,7 +153,7 @@ void fadeIn(lv_obj_t* obj, uint32_t delayMs, uint32_t ms) {
   lv_anim_set_var(&a, obj);
   lv_anim_set_values(&a, LV_OPA_TRANSP, LV_OPA_COVER);
   lv_anim_set_duration(&a, ms);
-  lv_anim_set_delay(&a, kEntranceDelay + delayMs);
+  lv_anim_set_delay(&a, entranceDelay() + delayMs);
   lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
   lv_anim_set_exec_cb(&a, setOpa);
   lv_anim_start(&a);
@@ -165,7 +167,7 @@ void riseIn(lv_obj_t* obj, uint32_t delayMs, int32_t from) {
   lv_anim_set_var(&a, obj);
   lv_anim_set_values(&a, from, 0);
   lv_anim_set_duration(&a, 260);
-  lv_anim_set_delay(&a, kEntranceDelay + delayMs);
+  lv_anim_set_delay(&a, entranceDelay() + delayMs);
   lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
   lv_anim_set_exec_cb(&a, setShift);
   lv_anim_start(&a);
@@ -185,7 +187,7 @@ void sweepIn(lv_obj_t* arc, float from, float to, uint32_t delayMs, uint32_t ms)
   lv_anim_set_var(&a, arc);
   lv_anim_set_values(&a, 0, 1000);
   lv_anim_set_duration(&a, ms);
-  lv_anim_set_delay(&a, kEntranceDelay + delayMs);
+  lv_anim_set_delay(&a, entranceDelay() + delayMs);
   lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
   lv_anim_set_user_data(&a, new Sweep{from, to});
   lv_anim_set_custom_exec_cb(&a, [](lv_anim_t* anim, int32_t v) {
@@ -204,7 +206,7 @@ void countUp(lv_obj_t* label, int value, uint32_t delayMs) {
   lv_anim_set_var(&a, label);
   lv_anim_set_values(&a, 0, value);
   lv_anim_set_duration(&a, value > 20 ? 700 : 450);
-  lv_anim_set_delay(&a, kEntranceDelay + delayMs);
+  lv_anim_set_delay(&a, entranceDelay() + delayMs);
   lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
   lv_anim_set_exec_cb(&a, setFigure);
   lv_anim_start(&a);
@@ -537,11 +539,12 @@ void buildPage(Page page) {
 
 // ---- screen changes
 //
-// A change of screen dips through black: the panel's own brightness falls,
-// the new screen is built and painted in the dark, and the light comes back.
-// Painting 466 x 466 pixels takes the panel a tenth of a second, top to
-// bottom; done with the light on it shows as a wipe, done in the dark it does
-// not show at all.
+// A new screen is drawn whole out of sight while the old one stays lit, and
+// is then laid over it strip by strip, in the direction of the gesture
+// (wipe.h). Nothing on the glass goes dark on the way.
+//
+// Only the first screen after a wake is different: there is nothing lit to
+// cover, so it is painted in the dark and the panel's light rises on it.
 
 namespace {
 
@@ -551,7 +554,7 @@ void setFade(uint8_t value) {
   if (S.actions.brightnessMoved) S.actions.brightnessMoved();
 }
 
-void fadeTo(uint8_t target, uint32_t ms, lv_anim_completed_cb_t done) {
+void fadeTo(uint8_t target, uint32_t ms) {
   lv_anim_delete(&S.fade, nullptr);
   lv_anim_t a;
   lv_anim_init(&a);
@@ -560,40 +563,42 @@ void fadeTo(uint8_t target, uint32_t ms, lv_anim_completed_cb_t done) {
   lv_anim_set_duration(&a, ms);
   lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
   lv_anim_set_exec_cb(&a, [](void*, int32_t v) { setFade(static_cast<uint8_t>(v)); });
-  if (done) lv_anim_set_completed_cb(&a, done);
   lv_anim_start(&a);
 }
 
-// The new screen is painted while the panel is still dark, and only then
-// does the light come back. This runs on its own, a moment after the swap:
-// painting from inside the animation that just ended would re-enter LVGL's
-// animation loop.
+// After a wake: the screen is painted while the panel is still dark, and
+// only then does the light come up. This runs on its own, a moment after
+// the screen was built, outside whatever LVGL callback asked for it.
 void riseAfterPaint(void*) {
   S.risePending = false;
-  // Another change began meanwhile: it brings the light back itself.
-  if (S.dipping) return;
   lv_refr_now(nullptr);
-  fadeTo(255, 180, nullptr);
+  fadeTo(255, 180);
 }
 
-// The bottom of the dip: swap the screen in the dark.
-void swapInTheDark(lv_anim_t*) {
-  std::function<void()> change = S.pendingChange;
+// The change of screen itself. It runs a moment after the gesture, on its
+// own: it draws a whole screen, which cannot be done from inside the LVGL
+// callback (a tap, a swipe) that asked for it.
+void swapScreens(void*) {
+  S.swapPending = false;
+  const std::function<void()> change = S.pendingChange;
   S.pendingChange = nullptr;
-  S.dipping = false;
+  if (!change) return;
+  // While the light of a wake is still rising there is nothing lit to sweep
+  // over: the new screen is simply drawn.
+  const bool staged = S.fade == 255 && !S.risePending && S.actions.stageBegin && S.actions.stageReveal && S.actions.stageBegin();
   S.entering = true;
-  if (change) change();
+  change();
   S.entering = false;
-  S.shownOnce = true;
-  if (!S.risePending) {
-    S.risePending = true;
-    lv_async_call(riseAfterPaint, nullptr);
-  }
+  if (!staged) return;
+  // Whatever the change drew on, the stage must hold the whole screen.
+  lv_obj_invalidate(lv_screen_active());
+  lv_refr_now(nullptr);
+  S.actions.stageReveal(S.pendingWipe);
 }
 
 }  // namespace
 
-void transition(std::function<void()> change) {
+void transition(std::function<void()> change, Wipe wipe) {
   if (!S.prefs.animations) {
     haltTransition();
     change();
@@ -601,24 +606,39 @@ void transition(std::function<void()> change) {
     revealNow();
     return;
   }
-  S.pendingChange = change;
-  if (S.dipping) return;
-  S.dipping = true;
-  // Nothing on the glass yet (a wake): no need to dip, only to rise.
+  // Nothing on the glass yet (a wake): drawn in the dark, then the light.
   if (!S.shownOnce) {
     lv_anim_delete(&S.fade, nullptr);
     setFade(0);
-    swapInTheDark(nullptr);
+    S.entering = true;
+    change();
+    S.entering = false;
+    S.shownOnce = true;
+    if (!S.risePending) {
+      S.risePending = true;
+      // No memory even for that call: the light comes up at once rather
+      // than never.
+      if (lv_async_call(riseAfterPaint, nullptr) != LV_RESULT_OK) {
+        S.risePending = false;
+        setFade(255);
+      }
+    }
     return;
   }
-  fadeTo(0, 80, swapInTheDark);
+  S.pendingChange = change;
+  S.pendingWipe = wipe;
+  if (S.swapPending) return;
+  S.swapPending = true;
+  // The same, for the change itself: made here and now rather than never.
+  if (lv_async_call(swapScreens, nullptr) != LV_RESULT_OK) swapScreens(nullptr);
 }
 
 void haltTransition() {
   lv_anim_delete(&S.fade, nullptr);
   if (S.risePending) lv_async_call_cancel(riseAfterPaint, nullptr);
+  if (S.swapPending) lv_async_call_cancel(swapScreens, nullptr);
   S.risePending = false;
-  S.dipping = false;
+  S.swapPending = false;
   S.pendingChange = nullptr;
 }
 
@@ -633,45 +653,47 @@ Page homePage() {
   return faces[S.prefs.homeFace < 5 ? S.prefs.homeFace : 0];
 }
 
-void showPage(Page page) {
+void showPage(Page page, Wipe wipe) {
   // A page with nothing to show today gives way to the first one.
   if (!pageAvailable(page)) page = Page::Now;
   // Leaving the celebration closes it: next time it opens on the picture.
   if (page != Page::Celebration) S.celebrationOpen = false;
-  // What is on show is settled at once, so a second swipe during the dip
+  // What is on show is settled at once, so a second swipe before the swap
   // starts from the page being opened; the glass follows a moment later.
   S.mode = Mode::Pages;
   S.page = page;
   S.noticeOverDay = false;
-  transition([page]() {
-    if (S.mode != Mode::Pages || S.page != page) return;
-    // An entrance is played by building the page afresh.
-    if (S.dirty[indexOf(page)] || S.entering) buildPage(page);
-    load(S.pages[indexOf(page)]);
-  });
+  transition(
+      [page]() {
+        if (S.mode != Mode::Pages || S.page != page) return;
+        // An entrance is played by building the page afresh.
+        if (S.dirty[indexOf(page)] || S.entering) buildPage(page);
+        load(S.pages[indexOf(page)]);
+      },
+      wipe);
 }
 
 void rebuildVisible() {
   for (bool& d : S.dirty) d = true;
   // A page change in flight builds the page itself when it lands.
-  if (S.mode == Mode::Pages && !S.dipping && lv_screen_active() == S.pages[indexOf(S.page)]) {
+  if (S.mode == Mode::Pages && !S.swapPending && lv_screen_active() == S.pages[indexOf(S.page)]) {
     buildPage(S.page);
   }
 }
 
-void goBack() {
+void goBack(Wipe wipe) {
   switch (S.mode) {
     case Mode::Beads:
     case Mode::Silence:
     case Mode::Torch:
     case Mode::Settings:
-      showPage(Page::Menu);
+      showPage(Page::Menu, wipe);
       break;
     case Mode::SettingsSub:
-      openSettings();
+      openSettings(wipe);
       break;
     case Mode::Reading:
-      showPage(Page::Celebration);
+      showPage(Page::Celebration, wipe);
       break;
     case Mode::Notice:
       if (S.noticeOverDay) dismissNotice();
@@ -735,7 +757,7 @@ void setStatus(const Status& status) {
 
 void goHome() {
   if (!S.dayShown) return;
-  showPage(homePage());
+  showPage(homePage(), Wipe::Close);
 }
 
 void clearDay() {
@@ -750,30 +772,32 @@ bool showingNotice() { return S.mode == Mode::Notice; }
 
 bool onSwipe(Swipe dir) {
   const bool forward = dir == Swipe::Up || dir == Swipe::Left;
+  // The new screen follows the finger.
+  const Wipe wipe = dir == Swipe::Up ? Wipe::Up : (dir == Swipe::Down ? Wipe::Down : (dir == Swipe::Left ? Wipe::Left : Wipe::Right));
   switch (S.mode) {
     case Mode::Pages:
-      showPage(neighbour(S.page, forward));
+      showPage(neighbour(S.page, forward), wipe);
       return true;
     case Mode::Reading:
       // The text scrolls up and down; a swipe to the right closes it.
       if (dir != Swipe::Right) return false;
-      goBack();
+      goBack(wipe);
       return true;
     case Mode::Settings:
       // The list scrolls up and down; only a sideways swipe leaves it.
       if (dir != Swipe::Right) return false;
-      goBack();
+      goBack(wipe);
       return true;
     case Mode::SettingsSub:
       // Some of these scroll too (Wi-Fi, about).
       if (dir != Swipe::Right) return false;
-      goBack();
+      goBack(wipe);
       return true;
     case Mode::Beads:
     case Mode::Silence:
     case Mode::Torch:
       if (forward) return false;
-      goBack();
+      goBack(wipe);
       return true;
     case Mode::Notice:
       if (!S.noticeOverDay) return false;
@@ -835,7 +859,7 @@ PowerHint powerHint() {
 
 uint8_t brightnessScale() { return S.fade; }
 
-bool changingScreen() { return S.dipping || S.risePending || S.fade != 255; }
+bool changingScreen() { return S.swapPending || S.risePending || S.fade != 255; }
 
 uint16_t beadsCount() { return S.beads; }
 

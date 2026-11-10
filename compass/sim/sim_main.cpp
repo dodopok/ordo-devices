@@ -2,7 +2,7 @@
 //   sim <out-dir> <today.json>            every screen, one frame each
 //   sim <out-dir> <today.json> exercise   pokes every control (run under ASAN)
 //   sim <out-dir> <today.json> movie      a walk through the screens, frame by
-//                                         frame, with the dips and entrances
+//                                         frame, with the wipes and entrances
 // The frames are raw PPM; to_png.py cuts the round glass and writes PNGs, and
 // to_gif.py strings the movie's frames together.
 
@@ -23,14 +23,21 @@ namespace {
 constexpr int kSize = 466;
 uint32_t nowMs = 0;
 uint16_t frame[kSize * kSize];
+// Where a new screen is drawn before it is laid over the old one, as on the
+// board (board/display.cpp).
+uint16_t stage[kSize * kSize];
+bool staging = false;
+int wipes = 0;
+int wipeFailures = 0;
 std::string outDir;
 int shot = 0;
 
 void flush(lv_display_t* d, const lv_area_t* area, uint8_t* px) {
   const int w = lv_area_get_width(area);
   const uint16_t* src = reinterpret_cast<const uint16_t*>(px);
+  uint16_t* into = staging ? stage : frame;
   for (int y = area->y1; y <= area->y2; y++) {
-    memcpy(&frame[y * kSize + area->x1], src, static_cast<size_t>(w) * 2);
+    memcpy(&into[y * kSize + area->x1], src, static_cast<size_t>(w) * 2);
     src += w;
   }
   lv_display_flush_ready(d);
@@ -118,6 +125,42 @@ void writeFrame(const char* path, uint8_t light) {
                                   static_cast<unsigned char>((c & 0x1F) * 255 / 31 * light / 255)};
     f.write(reinterpret_cast<const char*>(rgb), 3);
   }
+}
+
+// The screen change of the firmware, with the same strips in the same order.
+// Time stands still for LVGL meanwhile, as on the board; in a movie each
+// thirtieth of a second of the wipe is a frame.
+bool stageBegin() {
+  staging = true;
+  return true;
+}
+
+void stageReveal(ui::Wipe wipe) {
+  const int steps = ui::wipeSteps(wipe, kSize);
+  int laid = 0;
+  for (uint32_t elapsed = 0; laid < steps; elapsed += 33) {
+    for (const int due = ui::wipeStepsDue(steps, elapsed); laid < due; laid++) {
+      ui::WipeStrip strips[2];
+      const int count = ui::wipeStrips(wipe, kSize, laid, strips);
+      for (int i = 0; i < count; i++) {
+        const ui::WipeStrip& strip = strips[i];
+        // What the panel would refuse: a strip off an even line, or past the glass.
+        if ((strip.x & 1) || (strip.y & 1) || (strip.w & 1) || (strip.h & 1) || strip.x + strip.w > kSize || strip.y + strip.h > kSize) wipeFailures++;
+        for (int y = strip.y; y < strip.y + strip.h; y++) {
+          memcpy(&frame[y * kSize + strip.x], &stage[y * kSize + strip.x], static_cast<size_t>(strip.w) * 2);
+        }
+      }
+    }
+    if (filming) {
+      char path[512];
+      snprintf(path, sizeof(path), "%s/f%04d.ppm", outDir.c_str(), ++shot);
+      writeFrame(path, ui::brightnessScale());
+    }
+  }
+  staging = false;
+  wipes++;
+  // Every pixel of the new screen is on the glass.
+  if (memcmp(frame, stage, sizeof(frame)) != 0) wipeFailures++;
 }
 
 void snap(const char* name) {
@@ -284,11 +327,24 @@ void exercise(const model::Today& today) {
       }
       onBootPress();
       settle(2);
-      for (const char* row : {"Desligar", "Desvincular do Ordo", "Apagar tudo"}) {
+      for (const char* row : {"Desligar", "Desvincular do Ordo", "Apagar tudo", "Testar aviso"}) {
         tapRow(row);
         tap(170, 346);                                         // Cancelar
         settle(2);
       }
+      tapRow("Testar aviso");
+      tap(300, 346);                                           // Testar
+      settle(2);
+      onBootPress();
+      settle(2);
+      showReminderTest();
+      settle(2);
+      tap(233, 233);                                           // closes it
+      settle(2);
+      detail::showPage(Page::Menu);
+      settle(2);
+      tap(312, 312);                                           // Ajustes again
+      settle(2);
       onBootPress();
     }
   }
@@ -465,7 +521,7 @@ int main(int argc, char** argv) {
   actions.prefsChanged = [](const ui::Prefs&) {};
   actions.diagnostics = []() {
     ui::Diagnostics d;
-    d.firmware = "0.4.1";
+    d.firmware = "0.4.2";
     d.board = "ESP32-S3-Touch-AMOLED-1.75C";
     d.deviceName = "Chaveiro";
     d.batteryPercent = 82;
@@ -475,8 +531,21 @@ int main(int argc, char** argv) {
     d.clockDriftPpm = 412;
     d.freeMemoryKb = 148;
     d.lowestMemoryKb = 86;
-    d.nextWake = "18:00";
+    d.nextWake = "21:50";
     d.networks = {"Casa", "Paróquia São Paulo", "iPhone de Douglas"};
+    // The last wakes, as a day would leave them: looked at now; the evening
+    // reminder that rang by itself, and the sync ten minutes before it; a
+    // sync away from any network; one that stopped half way.
+    using sys::WakeCause, sys::WakeNet, sys::WakeStep;
+    d.wakes = {
+        {14 * 60 + 32, WakeCause::Button, false, 0, WakeStep::Shown, WakeNet::Answered, 1},
+        {12 * 60, WakeCause::Timer, false, static_cast<uint8_t>(sys::kDueMorning << 1), WakeStep::Rang, WakeNet::NotAsked, 1},
+        {11 * 60 + 50, WakeCause::Timer, false, 0, WakeStep::Slept, WakeNet::Answered, 5},
+        {8 * 60, WakeCause::Timer, false, 0, WakeStep::Slept, WakeNet::NoWifi, 9},
+        {7 * 60, WakeCause::Timer, false, sys::kDueMorning, WakeStep::Skipped, WakeNet::NotAsked, 0},
+        {4 * 60, WakeCause::Timer, false, 0, WakeStep::Syncing, WakeNet::NotAsked, 3},
+        {4 * 60 + 1, WakeCause::PowerOn, true, 0, WakeStep::Shown, WakeNet::Answered, 1},
+    };
     return d;
   };
   actions.silence = [](int minutes) { ui::setSilence(minutes > 0, static_cast<uint32_t>(minutes) * 60); };
@@ -497,6 +566,8 @@ int main(int argc, char** argv) {
   if (strcmp(mode, "movie") == 0) {
     prefs.animations = true;
     actions.bell = [](int) {};
+    actions.stageBegin = stageBegin;
+    actions.stageReveal = stageReveal;
     ui::init(prefs, actions);
     ui::setStatus(st);
     filming = true;
@@ -518,6 +589,9 @@ int main(int argc, char** argv) {
     actions.sleepNow = []() {};
     actions.checkUpdate = []() {};
     actions.installUpdate = []() {};
+    actions.testReminder = []() {};
+    actions.stageBegin = stageBegin;
+    actions.stageReveal = stageReveal;
     int moves = 0;
     actions.brightnessMoved = [&moves]() { moves++; };
     for (int pass = 0; pass < 2; pass++) {
@@ -530,6 +604,9 @@ int main(int argc, char** argv) {
       st0.minuteOfDay = 14 * 60 + 32;
       st0.linked = true;
       ui::setStatus(st0);
+      // The animated pass begins as a wake does: nothing on the glass yet,
+      // and the light comes up on the first screen.
+      if (animated) ui::detail::S.shownOnce = false;
       exercise(today);
       exercise(celebrationDay(today, 2));                       // a celebration with its picture
       exercise(model::viewFor(today, today.day.days + 5));      // one whose picture never came
@@ -539,12 +616,24 @@ int main(int argc, char** argv) {
         printf("the carousel is out of order (%d)\n", carouselFailures);
         return 1;
       }
-      if (ui::changingScreen() || ui::brightnessScale() != 255) {
-        printf("exercise left the glass dark (scale %d)\n", ui::brightnessScale());
+      if (ui::changingScreen() || ui::brightnessScale() != 255 || staging) {
+        printf("exercise left a screen change unfinished (scale %d)\n", ui::brightnessScale());
+        return 1;
+      }
+      if (wipeFailures) {
+        printf("%d screen changes left the glass wrong\n", wipeFailures);
         return 1;
       }
     }
-    printf("exercise finished, the light moved %d times\n", moves);
+    if (wipes == 0) {
+      printf("no screen change went through the stage\n");
+      return 1;
+    }
+    if (moves == 0) {
+      printf("the light never came up from the dark of a wake\n");
+      return 1;
+    }
+    printf("exercise finished: %d screen changes, the light moved %d times\n", wipes, moves);
     return 0;
   }
 
@@ -618,6 +707,13 @@ int main(int argc, char** argv) {
   clickRow(ui::detail::S.settings, "Sobre");
   snap("ajustes-sobre");
   ui::detail::openSettings();
+  clickRow(ui::detail::S.settings, "Sobre");
+  lv_obj_scroll_to_y(lv_obj_get_child(ui::detail::S.sub, 0), 560, LV_ANIM_OFF);
+  snap("ajustes-sobre-despertares");
+  ui::detail::openSettings();
+  clickRow(ui::detail::S.settings, "Testar aviso");
+  snap("ajustes-testar-aviso");
+  ui::detail::openSettings();
   clickRow(ui::detail::S.settings, "Apagar tudo");
   snap("ajustes-confirmar");
 
@@ -631,6 +727,8 @@ int main(int argc, char** argv) {
   snap("silencio-fim");
   ui::showStreakReminder();
   snap("sequencia");
+  ui::showReminderTest();
+  snap("aviso-teste");
   ui::showLowBattery();
   snap("bateria");
 

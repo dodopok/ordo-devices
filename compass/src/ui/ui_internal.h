@@ -45,10 +45,11 @@ struct State {
   bool silenceRunning = false;
   uint32_t silenceRemaining = 0;
 
-  // Screen changes (see ui::brightnessScale).
+  // Screen changes (see transition below, and ui::brightnessScale).
   uint8_t fade = 255;
-  bool dipping = false;
+  bool swapPending = false;
   std::function<void()> pendingChange;
+  Wipe pendingWipe = Wipe::Open;
   bool risePending = false;
   bool shownOnce = false;
   // True while the screen being built is one the owner just navigated to:
@@ -117,18 +118,20 @@ String clockText(int minuteOfDay);
 lv_color_t accentOf(const model::Today& day);
 
 // ---- navigation (ui_core.cpp)
-// Runs `change` (which builds and loads a screen) behind a dip to black, or
-// at once when animations are off. The newest change wins if two arrive
-// during the same dip.
-void transition(std::function<void()> change);
-// For what interrupts (a notice): `haltTransition` stops a change where it
-// stands, light included; `revealNow` then paints whatever was loaded while
-// the glass is still dim and brings the light back at once.
+// Runs `change` (which builds and loads a screen) and lays the new screen
+// over the old one in the direction of `wipe` (wipe.h); at once and in
+// place when animations are off. The newest change wins if two arrive
+// before the swap.
+void transition(std::function<void()> change, Wipe wipe = Wipe::Open);
+// For what interrupts (a notice): `haltTransition` drops a change that has
+// not happened yet and stops the light of a wake where it stands;
+// `revealNow` then paints whatever was loaded and brings the light up at
+// once.
 void haltTransition();
 void revealNow();
-void showPage(Page page);
+void showPage(Page page, Wipe wipe = Wipe::Open);
 Page homePage();
-void goBack();
+void goBack(Wipe wipe = Wipe::Close);
 void rebuildVisible();
 
 // ---- builders
@@ -148,7 +151,7 @@ void openTorch();
 void refreshSilence();
 void beadsCountOne();
 void beadsReset();
-void openSettings();                // ui_settings.cpp
+void openSettings(Wipe wipe = Wipe::Open);  // ui_settings.cpp
 void refreshSettings();
 
 }  // namespace ui::detail

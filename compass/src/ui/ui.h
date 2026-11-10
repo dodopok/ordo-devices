@@ -8,6 +8,8 @@
 
 #include "../model/content.h"
 #include "../model/today.h"
+#include "../sys/wake_trail.h"
+#include "wipe.h"
 
 // The screens. Nothing here touches the board or the network: the controller
 // hands in the day, the clock and the battery, and gets back what the owner
@@ -36,7 +38,7 @@ struct Prefs {
   bool remindersFromApp = true;
   uint8_t syncHours = 4;       // 0: only when woken; else every 2, 4, 6 or 12 hours
   uint8_t beadsMode = 0;       // 0 Anglican rosary (33), 1 rope of 33, 2 of 50, 3 of 100
-  bool animations = true;      // screens change through a short dip; faces play an entrance
+  bool animations = true;      // a new screen sweeps over the old one; faces play an entrance
 };
 
 // Where the search for a newer firmware stands.
@@ -97,6 +99,9 @@ struct Diagnostics {
   // ("HTTP 403", "conexão -1, TLS -0x2700"); empty: none since the wake.
   String siteProblem;
   std::vector<String> networks;
+  // The last times it woke and how far each wake got, newest first: what to
+  // read out when a reminder did not ring.
+  std::vector<sys::WakeNote> wakes;
 };
 
 struct Actions {
@@ -119,10 +124,18 @@ struct Actions {
   // Looks for a newer firmware; installs the one on offer.
   std::function<void()> checkUpdate;
   std::function<void()> installUpdate;
-  // The dip of a screen change moved (see brightnessScale): set the panel
-  // now, not at the controller's next pass, so that a screen is never
-  // swapped with the light on.
+  // The light of a wake moved (see brightnessScale): set the panel now, not
+  // at the controller's next pass.
   std::function<void()> brightnessMoved;
+  // A change of screen (wipe.h). `stageBegin` sends what LVGL draws next to
+  // a frame kept out of sight instead of the glass, and answers false when
+  // there is no memory for one; `stageReveal` lays that frame over the glass
+  // and gives the glass back to LVGL. Left unset, screens are simply
+  // redrawn in place.
+  std::function<bool()> stageBegin;
+  std::function<void(Wipe)> stageReveal;
+  // Sleeps now and rings in a minute: a reminder to try the compass with.
+  std::function<void()> testReminder;
 };
 
 // Creates the screens. Call once after the display is up.
@@ -149,6 +162,8 @@ void setLinkCountdown(uint32_t secondsLeft);
 void showReminder(int office);
 // The app's evening nudge: nothing prayed yet today.
 void showStreakReminder();
+// The reminder asked for from the settings, to see it ring.
+void showReminderTest();
 void showHourBell(int hour);
 void showSilenceDone();
 void showLowBattery();
@@ -184,13 +199,13 @@ bool onSwipe(Swipe dir);
 void onBootPress();
 void onBootLongPress();
 
-// Screen changes dip through black: the panel's own brightness does the
-// fading, which is smooth, while the slow part (redrawing 466 x 466 pixels)
-// happens in the dark. This is the factor, 0..255, the controller multiplies
-// its brightness by.
+// The first screen after a wake is drawn in the dark and the panel's own
+// brightness then rises on it. This is the factor, 0..255, the controller
+// multiplies its brightness by; it is 255 the rest of the time.
 uint8_t brightnessScale();
-// True while such a change is under way. Anything that blocks for a while (the
-// bell) waits for it to end, or the glass would freeze half lit.
+// True while that rise, or a change of screen, is under way. Anything that
+// blocks for a while (the bell) waits for it to end, or the glass would
+// freeze half lit.
 bool changingScreen();
 
 // What the screen on show asks of the power policy.

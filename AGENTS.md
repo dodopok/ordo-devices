@@ -54,8 +54,11 @@ leem a API: a única rota que o token de aparelho abre é
    ao entregar: "compilou, não foi gravado nem testado na placa".
 10. **Animação mexe em pouco vidro.** Pintar os 466 x 466 pixels leva um
     décimo de segundo; o que repinta a tela inteira a cada passo engasga e
-    come os toques. Troca de tela passa por `ui::detail::transition` (escurece
-    o painel, pinta no escuro, clareia). Entradas usam `fadeIn`, `riseIn`,
+    come os toques. Troca de tela passa por `ui::detail::transition`: a tela
+    nova é desenhada num quadro fora de vista (`board::displayStageBegin`) e
+    posta sobre a anterior em faixas, na direção do gesto (`ui/wipe.h`), cada
+    pixel escrito uma vez; a tela anterior nunca apaga. Só a primeira tela
+    depois de acordar sobe do escuro. Entradas usam `fadeIn`, `riseIn`,
     `sweepIn` e `countUp` em objetos pequenos e só tocam com
     `Prefs::animations`. Nada que "respira" pode ter o tamanho do vidro: um
     anel inteiro mudando de opacidade invalida o quadrado todo. E nada
@@ -82,6 +85,15 @@ leem a API: a única rota que o token de aparelho abre é
     subir. Toda versão publicada sai de `tools/release.py build`, com o número
     subido em `platformio.ini`. A chave privada de assinatura nunca entra no
     repositório.
+14. **O que toca não espera rede.** Num despertar com algo a tocar
+    (`Controller::background` devolvendo `true`) nada de Wi-Fi, TLS ou API
+    roda antes do sino: ele toca com o que está guardado. Sincronizar é
+    trabalho dos despertares sem nada a tocar, entre eles o de dez minutos
+    antes de cada lembrete (`app::kPrepMinutes`), e sempre pelo mesmo caminho
+    da tela acesa (`stepSync`, pedido em tarefa própria), com prazo. Cada
+    etapa de um despertar deixa nota em `sys/wake_trail` (memória que
+    sobrevive a sono e a pânico), lida em Ajustes › Sobre: caminho novo no
+    despertar ganha a sua nota.
 
 ## Fluxo de trabalho
 
