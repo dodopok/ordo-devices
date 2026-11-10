@@ -9,13 +9,25 @@ namespace {
 
 lv_obj_t* noticeCountdown = nullptr;
 
+// A notice interrupts: it does not wait for a dip, and it ends one that is
+// under way. The controller often blocks right after showing one (the bell,
+// a request to the API), so it has to be whole after a single pass of LVGL.
 lv_obj_t* begin(bool overDay, uint32_t seconds = 0) {
+  haltTransition();
+  S.shownOnce = true;
   S.mode = Mode::Notice;
   S.noticeOverDay = overDay;
   S.noticeSeconds = seconds;
   noticeCountdown = nullptr;
   clear(S.notice);
   return S.notice;
+}
+
+// Puts the finished notice on the glass. If it cut a screen change short,
+// the glass may be dark: it is painted first and lit after.
+void present(lv_obj_t* scr) {
+  load(scr);
+  revealNow();
 }
 
 lv_obj_t* spinner(lv_obj_t* scr, int32_t y) {
@@ -57,12 +69,13 @@ const char* officeFull(int i) {
   return tr(pt[i], en[i], es[i]);
 }
 
-void bellIcon(lv_obj_t* scr, int32_t y, lv_color_t color) {
+lv_obj_t* bellIcon(lv_obj_t* scr, int32_t y, lv_color_t color) {
   lv_obj_t* bell = lv_label_create(scr);
   lv_label_set_text(bell, LV_SYMBOL_BELL);
   lv_obj_set_style_text_font(bell, theme::iconsLarge(), 0);
   lv_obj_set_style_text_color(bell, color, 0);
   lv_obj_align(bell, LV_ALIGN_TOP_MID, 0, y);
+  return bell;
 }
 
 void tapDismisses(lv_obj_t* scr) {
@@ -81,7 +94,7 @@ void showSplash() {
   ringArc(scr, 454, 3, 0.0f, 1.0f, theme::track());
   text(scr, "Ordo", theme::display(), theme::fg(), 186, 0, 300);
   text(scr, "bússola litúrgica", theme::italic(), theme::dim(), 244, 0, 300);
-  load(scr);
+  present(scr);
 }
 
 void showMessage(const String& title, const String& body, bool withSpinner) {
@@ -89,7 +102,7 @@ void showMessage(const String& title, const String& body, bool withSpinner) {
   text(scr, title.c_str(), theme::large(), theme::fg(), withSpinner ? 140 : 162, 0, 320);
   text(scr, body.c_str(), theme::body(), theme::dim(), withSpinner ? 196 : 218, 0, 300);
   if (withSpinner) spinner(scr, 300);
-  load(scr);
+  present(scr);
 }
 
 void showWifiPortal(const String& ssid, PortalStep step, const String& network) {
@@ -138,7 +151,7 @@ void showWifiPortal(const String& ssid, PortalStep step, const String& network) 
       text(scr, network.c_str(), theme::small(), theme::gold(), 300, 0, 280);
       break;
   }
-  load(scr);
+  present(scr);
 }
 
 void showLink(const String& userCode, const String& verificationUri) {
@@ -149,7 +162,7 @@ void showLink(const String& userCode, const String& verificationUri) {
   text(scr, tr("No app: Configurações › Aparelhos", "In the app: Settings › Devices", "En la app: Ajustes › Dispositivos"), theme::small(),
        theme::dim(), 332, 0, 300);
   noticeCountdown = text(scr, "", theme::tiny(), theme::faint(), 362, 1, 240);
-  load(scr);
+  present(scr);
 }
 
 void setLinkCountdown(uint32_t secondsLeft) {
@@ -164,11 +177,12 @@ void showReminder(int office) {
   lv_obj_t* scr = begin(true, 25);
   const model::Today& t = S.day;
   const lv_color_t accent = t.day.hasColor ? t.day.color : theme::gold();
-  lv_obj_t* ring = ringArc(scr, 452, 5, 0.0f, 1.0f, accent);
-  breathe(ring, LV_OPA_30, [](void* obj, int32_t v) {
-    lv_obj_set_style_arc_opa(static_cast<lv_obj_t*>(obj), static_cast<lv_opa_t>(v), LV_PART_MAIN);
+  ringArc(scr, 452, 5, 0.0f, 1.0f, accent);
+  // The bell breathes, not the ring: a ring as wide as the glass would have
+  // the whole screen repainted at every step.
+  breathe(bellIcon(scr, 106, theme::gold()), LV_OPA_30, [](void* obj, int32_t v) {
+    lv_obj_set_style_opa(static_cast<lv_obj_t*>(obj), static_cast<lv_opa_t>(v), 0);
   });
-  bellIcon(scr, 106, theme::gold());
   text(scr, officeFull(office), theme::large(), theme::fg(), 162, 0, 320);
   const bool done = t.officesKnown && office >= 0 && office < 4 && t.offices[office].done;
   text(scr, done ? tr("já orada hoje", "already prayed today", "ya orada hoy")
@@ -182,7 +196,7 @@ void showReminder(int office) {
   }
   text(scr, tr("toque para fechar", "tap to close", "toque para cerrar"), theme::tiny(), theme::faint(), 372, 0, 240);
   tapDismisses(scr);
-  load(scr);
+  present(scr);
 }
 
 void showHourBell(int hour) {
@@ -195,7 +209,7 @@ void showHourBell(int hour) {
        theme::tiny(), theme::dim(), 268, 3, 300);
   if (!S.day.day.title.isEmpty()) text(scr, S.day.day.title.c_str(), theme::title(), accent, 298, 0, 300);
   tapDismisses(scr);
-  load(scr);
+  present(scr);
 }
 
 void showSilenceDone() {
@@ -205,7 +219,7 @@ void showSilenceDone() {
   text(scr, tr("o tempo de silêncio terminou", "the time of silence is over", "el tiempo de silencio terminó"), theme::italic(),
        theme::dim(), 240, 0, 300);
   tapDismisses(scr);
-  load(scr);
+  present(scr);
 }
 
 void showLowBattery() {
@@ -219,7 +233,32 @@ void showLowBattery() {
   text(scr, tr("Desligando para proteger a bateria. Ligue no cabo.", "Switching off to protect the battery. Plug it in.",
                "Apagando para proteger la batería. Conéctelo."),
        theme::body(), theme::dim(), 234, 0, 290);
-  load(scr);
+  present(scr);
+}
+
+void showUpdating(const String& version, int percent) {
+  static lv_obj_t* arc = nullptr;
+  static lv_obj_t* figure = nullptr;
+  // Built once; after that only the arc and the figure move.
+  if (S.mode != Mode::Notice || lv_screen_active() != S.notice || !arc || noticeCountdown != figure) {
+    lv_obj_t* scr = begin(false);
+    ringArc(scr, 440, 6, 0.0f, 1.0f, theme::track());
+    arc = ringArc(scr, 440, 6, 0.0f, 0.001f, theme::gold());
+    text(scr, tr("ATUALIZANDO", "UPDATING", "ACTUALIZANDO"), theme::tiny(), theme::dim(), 132, 3, 260);
+    figure = text(scr, "0%", theme::display(), theme::fg(), 172, 0, 260);
+    char buf[48];
+    snprintf(buf, sizeof(buf), "v%s", version.c_str());
+    text(scr, buf, theme::label(), theme::gold(), 236, 0, 260);
+    text(scr, tr("não desligue; ela reinicia sozinha", "do not switch it off; it restarts by itself",
+                 "no la apague; se reinicia sola"),
+         theme::italic(), theme::dim(), 286, 0, 260);
+    noticeCountdown = figure;
+    present(scr);
+  }
+  if (percent < 0) percent = 0;
+  if (percent > 100) percent = 100;
+  lv_arc_set_bg_end_angle(arc, static_cast<float>(percent) * 3.6f);
+  lv_label_set_text_fmt(figure, "%d%%", percent);
 }
 
 void dismissNotice() {

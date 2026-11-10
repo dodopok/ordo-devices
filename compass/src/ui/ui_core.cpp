@@ -8,7 +8,6 @@ namespace ui::detail {
 State S;
 
 namespace {
-constexpr int kPageCount = 6;
 int indexOf(Page page) { return static_cast<int>(page); }
 }  // namespace
 
@@ -66,10 +65,15 @@ lv_obj_t* dot(lv_obj_t* parent, int32_t size, lv_color_t fill, lv_color_t border
 }
 
 // Angle 0 at the top, clockwise, like a clock; LVGL's arc has 0 at 3 o'clock.
-void placePolar(lv_obj_t* obj, float radius, float fraction) {
+void polarPoint(float radius, float fraction, int32_t& x, int32_t& y) {
   const float angle = fraction * 2.0f * static_cast<float>(M_PI) - static_cast<float>(M_PI) / 2.0f;
-  const int32_t x = kCenter + static_cast<int32_t>(lroundf(radius * cosf(angle)));
-  const int32_t y = kCenter + static_cast<int32_t>(lroundf(radius * sinf(angle)));
+  x = kCenter + static_cast<int32_t>(lroundf(radius * cosf(angle)));
+  y = kCenter + static_cast<int32_t>(lroundf(radius * sinf(angle)));
+}
+
+void placePolar(lv_obj_t* obj, float radius, float fraction) {
+  int32_t x = 0, y = 0;
+  polarPoint(radius, fraction, x, y);
   lv_obj_update_layout(obj);
   lv_obj_align(obj, LV_ALIGN_TOP_LEFT, x - lv_obj_get_width(obj) / 2, y - lv_obj_get_height(obj) / 2);
 }
@@ -126,45 +130,245 @@ void breathe(lv_obj_t* obj, lv_opa_t low, lv_anim_exec_xcb_t exec) {
   lv_anim_start(&a);
 }
 
-void statusMarkers(lv_obj_t* scr) {
-  // Battery, small and dim, at the top of the face: a figure only when it is
-  // worth a look (charging, or under a third).
+// ---------------------------------------------------------------- entrances
+
+namespace {
+// Roughly when the light is back after a screen change: an entrance that
+// began with the screen still dark would be over before anyone saw it.
+constexpr uint32_t kEntranceDelay = 150;
+
+void setOpa(void* obj, int32_t v) { lv_obj_set_style_opa(static_cast<lv_obj_t*>(obj), static_cast<lv_opa_t>(v), 0); }
+void setShift(void* obj, int32_t v) { lv_obj_set_style_translate_y(static_cast<lv_obj_t*>(obj), v, 0); }
+void setFigure(void* obj, int32_t v) { lv_label_set_text_fmt(static_cast<lv_obj_t*>(obj), "%d", static_cast<int>(v)); }
+}  // namespace
+
+bool entrance() { return S.entering && S.prefs.animations; }
+
+void fadeIn(lv_obj_t* obj, uint32_t delayMs, uint32_t ms) {
+  if (!entrance()) return;
+  lv_anim_t a;
+  lv_anim_init(&a);
+  lv_anim_set_var(&a, obj);
+  lv_anim_set_values(&a, LV_OPA_TRANSP, LV_OPA_COVER);
+  lv_anim_set_duration(&a, ms);
+  lv_anim_set_delay(&a, kEntranceDelay + delayMs);
+  lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+  lv_anim_set_exec_cb(&a, setOpa);
+  lv_anim_start(&a);
+}
+
+void riseIn(lv_obj_t* obj, uint32_t delayMs, int32_t from) {
+  if (!entrance()) return;
+  fadeIn(obj, delayMs, 260);
+  lv_anim_t a;
+  lv_anim_init(&a);
+  lv_anim_set_var(&a, obj);
+  lv_anim_set_values(&a, from, 0);
+  lv_anim_set_duration(&a, 260);
+  lv_anim_set_delay(&a, kEntranceDelay + delayMs);
+  lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+  lv_anim_set_exec_cb(&a, setShift);
+  lv_anim_start(&a);
+}
+
+namespace {
+struct Sweep {
+  float from;
+  float to;
+};
+}  // namespace
+
+void sweepIn(lv_obj_t* arc, float from, float to, uint32_t delayMs, uint32_t ms) {
+  if (!entrance()) return;
+  lv_anim_t a;
+  lv_anim_init(&a);
+  lv_anim_set_var(&a, arc);
+  lv_anim_set_values(&a, 0, 1000);
+  lv_anim_set_duration(&a, ms);
+  lv_anim_set_delay(&a, kEntranceDelay + delayMs);
+  lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+  lv_anim_set_user_data(&a, new Sweep{from, to});
+  lv_anim_set_custom_exec_cb(&a, [](lv_anim_t* anim, int32_t v) {
+    const Sweep* sweep = static_cast<const Sweep*>(lv_anim_get_user_data(anim));
+    lv_arc_set_bg_end_angle(static_cast<lv_obj_t*>(anim->var),
+                            (sweep->from + (sweep->to - sweep->from) * static_cast<float>(v) / 1000.0f) * 360.0f);
+  });
+  lv_anim_set_deleted_cb(&a, [](lv_anim_t* anim) { delete static_cast<Sweep*>(lv_anim_get_user_data(anim)); });
+  lv_anim_start(&a);
+}
+
+void countUp(lv_obj_t* label, int value, uint32_t delayMs) {
+  if (!entrance() || value < 2) return;
+  lv_anim_t a;
+  lv_anim_init(&a);
+  lv_anim_set_var(&a, label);
+  lv_anim_set_values(&a, 0, value);
+  lv_anim_set_duration(&a, value > 20 ? 700 : 450);
+  lv_anim_set_delay(&a, kEntranceDelay + delayMs);
+  lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+  lv_anim_set_exec_cb(&a, setFigure);
+  lv_anim_start(&a);
+}
+
+void pulse(lv_obj_t* obj) {
+  if (!S.prefs.animations) return;
+  lv_anim_t a;
+  lv_anim_init(&a);
+  lv_anim_set_var(&a, obj);
+  lv_anim_set_values(&a, LV_OPA_20, LV_OPA_COVER);
+  lv_anim_set_duration(&a, 260);
+  lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+  lv_anim_set_exec_cb(&a, setOpa);
+  lv_anim_start(&a);
+}
+
+namespace {
+
+// The Wi-Fi mark: a point and three arcs opening upwards, lit up to the
+// signal of the last network joined. Its foot is at (cx, cy). When the day on
+// screen has gone more than twelve hours without the API confirming it, the
+// arcs go out and the point turns red.
+void wifiMark(lv_obj_t* scr, int32_t cx, int32_t cy) {
   const Status& st = S.status;
-  if (st.batteryPercent >= 0 && (st.charging || st.batteryPercent <= 30)) {
-    char buf[24];
-    snprintf(buf, sizeof(buf), "%d%%", st.batteryPercent);
-    lv_obj_t* label = text(scr, buf, theme::tiny(), st.batteryPercent <= 10 ? theme::red() : theme::dim(), 50, 1, 80);
-    if (st.charging) {
-      lv_obj_t* bolt = lv_label_create(scr);
-      lv_label_set_text(bolt, LV_SYMBOL_CHARGE);
-      lv_obj_set_style_text_font(bolt, theme::icons(), 0);
-      lv_obj_set_style_text_color(bolt, theme::gold(), 0);
-      lv_obj_align_to(bolt, label, LV_ALIGN_OUT_LEFT_MID, 22, 0);
+  const bool stale = st.linked && st.syncedMinutesAgo > 12 * 60 && !st.syncing;
+  const int bars = stale ? 0 : st.wifiBars;
+  const lv_color_t lit = st.syncing ? theme::gold() : theme::dim();
+  lv_obj_t* point = dot(scr, 5, stale ? theme::red() : (bars > 0 || st.syncing ? lit : theme::faint()), theme::bg(), 0);
+  lv_obj_align(point, LV_ALIGN_TOP_LEFT, cx - 2, cy - 4);
+  for (int i = 0; i < 3; i++) {
+    const int32_t radius = 7 + i * 5;
+    lv_obj_t* arc = lv_arc_create(scr);
+    lv_obj_set_size(arc, radius * 2, radius * 2);
+    lv_obj_align(arc, LV_ALIGN_TOP_LEFT, cx - radius, cy - radius - 1);
+    lv_arc_set_rotation(arc, 270);
+    lv_arc_set_bg_angles(arc, 318, 42);
+    lv_arc_set_angles(arc, 0, 0);
+    lv_obj_set_style_arc_width(arc, 3, LV_PART_MAIN);
+    lv_obj_set_style_arc_rounded(arc, true, LV_PART_MAIN);
+    lv_obj_set_style_arc_color(arc, i < bars || st.syncing ? lit : theme::border(), LV_PART_MAIN);
+    lv_obj_set_style_arc_opa(arc, LV_OPA_TRANSP, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(arc, LV_OPA_TRANSP, LV_PART_KNOB);
+    lv_obj_set_style_pad_all(arc, 0, LV_PART_KNOB);
+    inert(arc);
+    if (st.syncing) {
+      // Looking for the network: the arcs light up one after the other.
+      lv_anim_t a;
+      lv_anim_init(&a);
+      lv_anim_set_var(&a, arc);
+      lv_anim_set_values(&a, LV_OPA_20, LV_OPA_COVER);
+      lv_anim_set_duration(&a, 500);
+      lv_anim_set_reverse_duration(&a, 500);
+      lv_anim_set_delay(&a, static_cast<uint32_t>(i) * 180);
+      lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
+      lv_anim_set_exec_cb(&a, [](void* obj, int32_t v) {
+        lv_obj_set_style_arc_opa(static_cast<lv_obj_t*>(obj), static_cast<lv_opa_t>(v), LV_PART_MAIN);
+      });
+      lv_anim_start(&a);
     }
-  }
-  // A grey dot when the day on show has not been confirmed for a while.
-  if (st.syncing) {
-    lv_obj_t* d = dot(scr, 8, theme::gold(), theme::gold(), 0);
-    lv_obj_align(d, LV_ALIGN_TOP_MID, 0, 34);
-    breathe(d, LV_OPA_30, [](void* obj, int32_t v) {
-      lv_obj_set_style_opa(static_cast<lv_obj_t*>(obj), static_cast<lv_opa_t>(v), 0);
-    });
-  } else if (st.syncedMinutesAgo > 12 * 60) {
-    lv_obj_t* d = dot(scr, 8, theme::faint(), theme::faint(), 0);
-    lv_obj_align(d, LV_ALIGN_TOP_MID, 0, 34);
   }
 }
 
+// The battery: an outline that fills with the charge. Gold and breathing
+// while it charges, red when it is nearly out. Top-left corner at (x, y).
+void batteryMark(lv_obj_t* scr, int32_t x, int32_t y) {
+  const Status& st = S.status;
+  const int percent = st.batteryPercent < 0 ? 0 : (st.batteryPercent > 100 ? 100 : st.batteryPercent);
+  const lv_color_t ink = percent <= 10 && !st.charging ? theme::red() : (st.charging ? theme::gold() : theme::dim());
+  lv_obj_t* body = dot(scr, 10, theme::bg(), ink, 2);
+  lv_obj_set_size(body, 27, 14);
+  lv_obj_set_style_radius(body, 4, 0);
+  lv_obj_align(body, LV_ALIGN_TOP_LEFT, x, y);
+  lv_obj_t* nub = dot(scr, 4, ink, ink, 0);
+  lv_obj_set_size(nub, 3, 6);
+  lv_obj_set_style_radius(nub, 1, 0);
+  lv_obj_align(nub, LV_ALIGN_TOP_LEFT, x + 28, y + 4);
+  const int32_t width = 2 + (19 * percent) / 100;
+  lv_obj_t* fill = dot(scr, 4, ink, ink, 0);
+  lv_obj_set_size(fill, width, 6);
+  lv_obj_set_style_radius(fill, 1, 0);
+  lv_obj_align(fill, LV_ALIGN_TOP_LEFT, x + 4, y + 4);
+  if (st.charging) {
+    breathe(fill, LV_OPA_30, [](void* obj, int32_t v) {
+      lv_obj_set_style_opa(static_cast<lv_obj_t*>(obj), static_cast<lv_opa_t>(v), 0);
+    });
+  }
+}
+
+}  // namespace
+
+// The top of every face: Wi-Fi, battery and its figure, small and quiet.
+// `y` is where the row sits: under the rim, or inside the ring on the faces
+// whose ring is thick enough to be in the way.
+void statusMarkers(lv_obj_t* scr, int32_t y) {
+  const Status& st = S.status;
+  const bool battery = st.batteryPercent >= 0;
+  char figure[12] = "";
+  if (battery) snprintf(figure, sizeof(figure), "%d%%", st.batteryPercent);
+  // Laid out around the middle: [wifi] [battery] [82%].
+  int32_t figureWidth = 0;
+  if (battery) {
+    lv_point_t size;
+    lv_text_get_size(&size, figure, theme::tiny(), 1, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+    figureWidth = size.x;
+  }
+  const int32_t total = 34 + (battery ? 12 + 31 + 6 + figureWidth : 0);
+  int32_t x = kCenter - total / 2;
+  wifiMark(scr, x + 17, y + 15);
+  x += 34;
+  if (battery) {
+    x += 12;
+    batteryMark(scr, x, y + 1);
+    x += 31 + 6;
+    lv_obj_t* label = lv_label_create(scr);
+    lv_label_set_text(label, figure);
+    lv_obj_set_style_text_font(label, theme::tiny(), 0);
+    lv_obj_set_style_text_letter_space(label, 1, 0);
+    lv_obj_set_style_text_color(label, st.batteryPercent <= 10 && !st.charging ? theme::red() : theme::dim(), 0);
+    lv_obj_align(label, LV_ALIGN_TOP_LEFT, x, y - 1);
+  }
+}
+
+bool pageAvailable(Page page) {
+  // The celebration's page exists on the days that have one.
+  return page != Page::Celebration || S.day.day.celebration.present();
+}
+
 void pageDots(lv_obj_t* scr, Page page) {
-  // Where you are in the carousel: six points on the rim, at three o'clock,
-  // outside every ring the faces draw.
-  const int count = kPageCount;
+  // Where you are in the carousel: a point per page there is today, on the
+  // rim at three o'clock, outside every ring the faces draw.
+  int count = 0;
+  int here = 0;
+  for (int i = 0; i < kPageCount; i++) {
+    if (!pageAvailable(static_cast<Page>(i))) continue;
+    if (i == indexOf(page)) here = count;
+    count++;
+  }
   for (int i = 0; i < count; i++) {
-    const bool here = i == indexOf(page);
-    lv_obj_t* d = dot(scr, here ? 9 : 5, here ? theme::fg() : theme::faint(), theme::bg(), 0);
+    lv_obj_t* d = dot(scr, i == here ? 9 : 5, i == here ? theme::fg() : theme::faint(), theme::bg(), 0);
     const float span = 0.016f;
     placePolar(d, 227.0f, 0.25f + (i - (count - 1) / 2.0f) * span);
   }
+}
+
+lv_obj_t* scrollColumn(lv_obj_t* scr) {
+  lv_obj_t* col = lv_obj_create(scr);
+  lv_obj_remove_style_all(col);
+  lv_obj_set_size(col, kScreen, kScreen);
+  lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(col, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_top(col, 34, 0);
+  lv_obj_set_style_pad_bottom(col, 170, 0);
+  lv_obj_set_style_pad_row(col, 8, 0);
+  lv_obj_set_scroll_dir(col, LV_DIR_VER);
+  lv_obj_set_scrollbar_mode(col, LV_SCROLLBAR_MODE_OFF);
+  lv_obj_set_scrollable(col, true);
+  return col;
+}
+
+int16_t reminderFor(int office) {
+  if (office < 0 || office > 3) return -1;
+  if (S.prefs.remindersFromApp && S.day.hasReminders) return S.day.reminders[office];
+  return S.prefs.reminder[office];
 }
 
 void load(lv_obj_t* scr) {
@@ -289,30 +493,142 @@ void buildPage(Page page) {
   clear(scr);
   switch (page) {
     case Page::Now: buildNow(scr); break;
+    case Page::Celebration: buildCelebration(scr); break;
     case Page::Compass: buildCompass(scr); break;
     case Page::Readings: buildReadings(scr); break;
     case Page::Offices: buildOffices(scr); break;
     case Page::Week: buildWeek(scr); break;
     case Page::Menu: buildMenu(scr); break;
   }
-  if (page != Page::Menu) statusMarkers(scr);
+  // Drawn last, so they sit above whatever the page drew: the picture of a
+  // celebration included.
+  statusMarkers(scr, page == Page::Compass || page == Page::Offices ? 82 : 40);
   pageDots(scr, page);
   S.dirty[i] = false;
 }
 
 }  // namespace
 
+// ---- screen changes
+//
+// A change of screen dips through black: the panel's own brightness falls,
+// the new screen is built and painted in the dark, and the light comes back.
+// Painting 466 x 466 pixels takes the panel a tenth of a second, top to
+// bottom; done with the light on it shows as a wipe, done in the dark it does
+// not show at all.
+
+namespace {
+
+void setFade(uint8_t value) {
+  if (S.fade == value) return;
+  S.fade = value;
+  if (S.actions.brightnessMoved) S.actions.brightnessMoved();
+}
+
+void fadeTo(uint8_t target, uint32_t ms, lv_anim_completed_cb_t done) {
+  lv_anim_delete(&S.fade, nullptr);
+  lv_anim_t a;
+  lv_anim_init(&a);
+  lv_anim_set_var(&a, &S.fade);
+  lv_anim_set_values(&a, S.fade, target);
+  lv_anim_set_duration(&a, ms);
+  lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+  lv_anim_set_exec_cb(&a, [](void*, int32_t v) { setFade(static_cast<uint8_t>(v)); });
+  if (done) lv_anim_set_completed_cb(&a, done);
+  lv_anim_start(&a);
+}
+
+// The new screen is painted while the panel is still dark, and only then
+// does the light come back. This runs on its own, a moment after the swap:
+// painting from inside the animation that just ended would re-enter LVGL's
+// animation loop.
+void riseAfterPaint(void*) {
+  S.risePending = false;
+  // Another change began meanwhile: it brings the light back itself.
+  if (S.dipping) return;
+  lv_refr_now(nullptr);
+  fadeTo(255, 180, nullptr);
+}
+
+// The bottom of the dip: swap the screen in the dark.
+void swapInTheDark(lv_anim_t*) {
+  std::function<void()> change = S.pendingChange;
+  S.pendingChange = nullptr;
+  S.dipping = false;
+  S.entering = true;
+  if (change) change();
+  S.entering = false;
+  S.shownOnce = true;
+  if (!S.risePending) {
+    S.risePending = true;
+    lv_async_call(riseAfterPaint, nullptr);
+  }
+}
+
+}  // namespace
+
+void transition(std::function<void()> change) {
+  if (!S.prefs.animations) {
+    haltTransition();
+    change();
+    S.shownOnce = true;
+    revealNow();
+    return;
+  }
+  S.pendingChange = change;
+  if (S.dipping) return;
+  S.dipping = true;
+  // Nothing on the glass yet (a wake): no need to dip, only to rise.
+  if (!S.shownOnce) {
+    lv_anim_delete(&S.fade, nullptr);
+    setFade(0);
+    swapInTheDark(nullptr);
+    return;
+  }
+  fadeTo(0, 80, swapInTheDark);
+}
+
+void haltTransition() {
+  lv_anim_delete(&S.fade, nullptr);
+  if (S.risePending) lv_async_call_cancel(riseAfterPaint, nullptr);
+  S.risePending = false;
+  S.dipping = false;
+  S.pendingChange = nullptr;
+}
+
+void revealNow() {
+  if (S.fade == 255) return;
+  lv_refr_now(nullptr);
+  setFade(255);
+}
+
+Page homePage() {
+  static const Page faces[] = {Page::Now, Page::Compass, Page::Readings, Page::Offices, Page::Week};
+  return faces[S.prefs.homeFace < 5 ? S.prefs.homeFace : 0];
+}
+
 void showPage(Page page) {
+  // A page with nothing to show today gives way to the first one.
+  if (!pageAvailable(page)) page = Page::Now;
+  // Leaving the celebration closes it: next time it opens on the picture.
+  if (page != Page::Celebration) S.celebrationOpen = false;
+  // What is on show is settled at once, so a second swipe during the dip
+  // starts from the page being opened; the glass follows a moment later.
   S.mode = Mode::Pages;
   S.page = page;
   S.noticeOverDay = false;
-  if (S.dirty[indexOf(page)]) buildPage(page);
-  load(S.pages[indexOf(page)]);
+  transition([page]() {
+    if (S.mode != Mode::Pages || S.page != page) return;
+    // An entrance is played by building the page afresh.
+    if (S.dirty[indexOf(page)] || S.entering) buildPage(page);
+    load(S.pages[indexOf(page)]);
+  });
 }
 
 void rebuildVisible() {
   for (bool& d : S.dirty) d = true;
-  if (S.mode == Mode::Pages) {
+  // A page change in flight builds the page itself when it lands.
+  if (S.mode == Mode::Pages && !S.dipping && lv_screen_active() == S.pages[indexOf(S.page)]) {
     buildPage(S.page);
   }
 }
@@ -327,6 +643,9 @@ void goBack() {
       break;
     case Mode::SettingsSub:
       openSettings();
+      break;
+    case Mode::Reading:
+      showPage(Page::Celebration);
       break;
     case Mode::Notice:
       if (S.noticeOverDay) dismissNotice();
@@ -347,6 +666,8 @@ using namespace detail;
 void init(const Prefs& prefs, Actions actions) {
   S.prefs = prefs;
   S.actions = actions;
+  // Called again (the simulator does), it only takes the new settings.
+  if (S.tool) return;
   for (auto& scr : S.pages) scr = blankScreen();
   S.tool = blankScreen();
   S.settings = blankScreen();
@@ -361,24 +682,34 @@ void setToday(const model::Today& today) {
   for (bool& d : S.dirty) d = true;
   if (first && (S.mode == Mode::Notice && !S.noticeOverDay)) {
     goHome();
+  } else if (S.mode == Mode::Pages && !pageAvailable(S.page)) {
+    // The day turned under the celebration's page and the new one has none.
+    showPage(Page::Now);
   } else if (S.mode == Mode::Pages) {
     rebuildVisible();
   }
+}
+
+void contentArrived(const String& slug) {
+  if (slug != S.day.day.celebration.slug) return;
+  S.dirty[static_cast<int>(Page::Celebration)] = true;
+  celebrationContentArrived();
 }
 
 void setStatus(const Status& status) {
   const Status& old = S.status;
   const bool changed = old.clockValid != status.clockValid || old.minuteOfDay != status.minuteOfDay ||
                        old.batteryPercent != status.batteryPercent || old.charging != status.charging ||
-                       old.syncing != status.syncing || old.linked != status.linked ||
+                       old.syncing != status.syncing || old.linked != status.linked || old.wifiBars != status.wifiBars ||
                        (old.syncedMinutesAgo > 12 * 60) != (status.syncedMinutesAgo > 12 * 60);
   S.status = status;
   if (changed && S.dayShown) rebuildVisible();
+  refreshSettings();
 }
 
 void goHome() {
   if (!S.dayShown) return;
-  showPage(S.prefs.homeFace == 1 ? Page::Compass : Page::Now);
+  showPage(homePage());
 }
 
 void clearDay() {
@@ -395,11 +726,18 @@ bool onSwipe(Swipe dir) {
   const bool forward = dir == Swipe::Up || dir == Swipe::Left;
   switch (S.mode) {
     case Mode::Pages: {
-      const int count = 6;
-      const int next = (static_cast<int>(S.page) + (forward ? 1 : count - 1)) % count;
+      int next = static_cast<int>(S.page);
+      do {
+        next = (next + (forward ? 1 : kPageCount - 1)) % kPageCount;
+      } while (!pageAvailable(static_cast<Page>(next)));
       showPage(static_cast<Page>(next));
       return true;
     }
+    case Mode::Reading:
+      // The text scrolls up and down; a swipe to the right closes it.
+      if (dir != Swipe::Right) return false;
+      goBack();
+      return true;
     case Mode::Settings:
       // The list scrolls up and down; only a sideways swipe leaves it.
       if (dir != Swipe::Right) return false;
@@ -447,9 +785,8 @@ PowerHint powerHint() {
   PowerHint hint;
   switch (S.mode) {
     case Mode::Beads:
-      // Counting goes on by feel: a dim screen that waits a minute per bead.
+      // Counting goes on by feel: the screen waits a minute per bead.
       hint.screenSeconds = 60;
-      hint.brightness = 40;
       break;
     case Mode::Torch:
       hint.screenSeconds = 60;
@@ -462,6 +799,10 @@ PowerHint powerHint() {
     case Mode::SettingsSub:
       hint.screenSeconds = 45;
       break;
+    case Mode::Reading:
+      // Someone is reading: the screen waits for them.
+      hint.screenSeconds = 90;
+      break;
     case Mode::Notice:
       if (S.noticeOverDay) hint.screenSeconds = S.noticeSeconds;
       break;
@@ -471,15 +812,32 @@ PowerHint powerHint() {
   return hint;
 }
 
+uint8_t brightnessScale() { return S.fade; }
+
+bool changingScreen() { return S.dipping || S.risePending || S.fade != 255; }
+
 uint16_t beadsCount() { return S.beads; }
 
 void setBeadsCount(uint16_t count) { S.beads = count; }
 
 void setSilence(bool running, uint32_t remainingSeconds) {
   const bool changed = running != S.silenceRunning || remainingSeconds != S.silenceRemaining;
+  const bool flipped = running != S.silenceRunning;
   S.silenceRunning = running;
   S.silenceRemaining = remainingSeconds;
-  if (changed && S.mode == Mode::Silence) openSilence();
+  if (!changed) return;
+  if (S.mode != Mode::Silence) {
+    // The menu tile says how long is left, to the minute.
+    if (flipped || remainingSeconds % 60 == 0) {
+      S.dirty[static_cast<int>(Page::Menu)] = true;
+      if (S.mode == Mode::Pages && S.page == Page::Menu) rebuildVisible();
+    }
+    return;
+  }
+  // Starting or ending changes the whole screen; a second going by only
+  // changes the figure.
+  if (flipped) openSilence();
+  else refreshSilence();
 }
 
 }  // namespace ui

@@ -40,9 +40,14 @@ struct RtcState {
   char ssid[33];
   uint8_t bssid[6];
   uint8_t channel;
+  int8_t rssi;              // of the network last joined, dBm; 0: none yet
 
   // The screens.
   uint16_t beads;
+
+  // Firmware updates: when the site was last asked, and what it offered.
+  int64_t updateCheckedRaw;  // raw seconds; 0: never since power-on
+  char updateVersion[16];    // "0.4.1"; empty: nothing newer was on offer
 
   // For the "Sobre" screen.
   int32_t countersDay;

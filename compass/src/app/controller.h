@@ -1,12 +1,17 @@
 #pragma once
 
+#include <atomic>
+#include <functional>
+#include <vector>
 #include <Arduino.h>
 
 #include "../board/power.h"
 #include "schedule.h"
 #include "../model/today.h"
 #include "../net/ordo_api.h"
+#include "../net/ota.h"
 #include "../net/wifi.h"
+#include "../store/content.h"
 #include "../store/settings.h"
 #include "../ui/ui.h"
 
@@ -55,6 +60,39 @@ class Controller {
   void finishSync();
   bool syncBlocking();
   void fetchToday();
+  void applyToday(const net::TodayResult& result);
+  bool startFetch();
+  static void fetchTask(void* self);
+
+  // the celebrations' pictures and texts
+  struct ContentJob {
+    String slug;
+    String path;
+    store::ContentKind kind = store::ContentKind::Art;
+    bool manifest = false;  // not a celebration's file: the firmware manifest
+  };
+  struct ContentResult {
+    int status = 0;
+    std::vector<uint8_t> body;
+  };
+  std::vector<ContentJob> wantedContent(int limit);
+  bool startContent();
+  static void contentTask(void* self);
+  void drainContent();
+  void keepContent(const ContentJob& job, ContentResult& result);
+  void fetchContentBlocking();
+  void pruneContent();
+  ui::Art artFor(const String& slug);
+  model::CelebrationText textFor(const String& slug);
+
+  // firmware updates
+  bool updateCheckDue() const;
+  void rememberOffer(net::OtaCheck result, const model::FirmwareOffer& offer);
+  bool connectForSite();
+  void checkUpdateNow();
+  void installUpdateNow();
+  static void installTask(void* self);
+  bool stepInstall();
   void showBlocked();
 
   // time-driven
@@ -70,6 +108,8 @@ class Controller {
   // input and power
   void handleInput();
   void applyPower();
+  void applyBrightness();
+  void settleScreen(uint32_t atLeastMs = 0);
   uint8_t targetBrightness(uint32_t idleMs) const;
   bool deskMode() const;
   void pushStatus();
@@ -93,6 +133,52 @@ class Controller {
   // sync
   bool syncing_ = false;
   uint32_t syncStartedMs_ = 0;
+  // With the screen on, the request to the API runs on a task of its own:
+  // it takes a second or two, and the glass keeps answering meanwhile. The
+  // task only fills `result`; everything that follows from it happens back
+  // on the main loop, once `done` is set.
+  struct Fetch {
+    String token;
+    String etag;
+    net::TodayResult result;
+    std::atomic<bool> done{false};
+    bool running = false;
+  };
+  Fetch fetch_;
+
+  // What the day's celebrations still lack is fetched on a task too, one
+  // connection for the lot. The task fills `results` in order and says how
+  // many are ready; the main loop stores each as it arrives.
+  struct Content {
+    std::vector<ContentJob> jobs;
+    std::vector<ContentResult> results;
+    std::atomic<int> produced{0};
+    std::atomic<bool> done{false};
+    bool running = false;
+    int consumed = 0;
+  };
+  Content content_;
+  // Files the site said it does not have, not asked for again while awake.
+  std::vector<String> missing_;
+  // The picture on show, decoded: 466 x 466 RGB565 in PSRAM.
+  uint16_t* artPixels_ = nullptr;
+  String artSlug_;
+
+  ui::UpdateState update_ = ui::UpdateState::Unknown;
+  model::FirmwareOffer offer_;
+  // A firmware being written, on a task with a stack deep enough for TLS and
+  // flash at once. The main loop only draws how far it is and keeps the
+  // compass from sleeping or being navigated meanwhile.
+  struct Install {
+    std::atomic<int> percent{0};
+    std::atomic<bool> done{false};
+    bool running = false;
+    net::OtaResult result = net::OtaResult::Unreachable;
+    String version;
+    String language;
+    int shown = -1;
+  };
+  Install install_;
 
   // Wi-Fi setup
   net::PortalState portalShown_ = net::PortalState::Off;
@@ -106,6 +192,12 @@ class Controller {
   uint32_t pollIntervalMs_ = 5000;
   uint32_t lastCountdownAt_ = 0;
   uint32_t lastWifiTryMs_ = 0;
+
+  // What a screen asked for that blocks, or that needs LVGL to draw first
+  // (the bell, the last message before switching off). Screens ask from
+  // inside LVGL's own callbacks, where lv_timer_handler() returns without
+  // doing anything; the request waits here for the main loop.
+  std::function<void()> later_;
 
   // housekeeping
   uint32_t startedMs_ = 0;

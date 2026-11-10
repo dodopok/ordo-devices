@@ -24,6 +24,7 @@ leem a API: a única rota que o token de aparelho abre é
    `make -C compass/sim check` (toca em todos os controles com verificação de
    memória) e olhe o resultado de `make -C compass/sim shots`. Mudou o
    relógio, a agenda de acordar ou o modelo? `make -C compass/sim test`.
+   Mudou uma animação? `make -C compass/sim movie` e olhe o GIF.
 3. **Nada de segredo no código nem no log.** O token do aparelho mora no NVS
    e não é impresso. `ORDO_TLS_INSECURE` é só para desenvolvimento e nunca é o
    padrão de um ambiente.
@@ -51,6 +52,36 @@ leem a API: a única rota que o token de aparelho abre é
    `version` no manifesto e em `store/store.json`, com entrada no `changelog`.
 9. **Sem hardware aqui.** Quem não tem a placa à mão diz isso explicitamente
    ao entregar: "compilou, não foi gravado nem testado na placa".
+10. **Animação mexe em pouco vidro.** Pintar os 466 x 466 pixels leva um
+    décimo de segundo; o que repinta a tela inteira a cada passo engasga e
+    come os toques. Troca de tela passa por `ui::detail::transition` (escurece
+    o painel, pinta no escuro, clareia). Entradas usam `fadeIn`, `riseIn`,
+    `sweepIn` e `countUp` em objetos pequenos e só tocam com
+    `Prefs::animations`. Nada que "respira" pode ter o tamanho do vidro: um
+    anel inteiro mudando de opacidade invalida o quadrado todo. E nada
+    bloqueia o laço com uma troca em curso: antes do sino,
+    `Controller::settleScreen()`; a consulta à API roda em tarefa própria.
+11. **A bússola fala com dois lugares, e só.** A API do Ordo
+    (`ORDO_API_BASE_URL`) e `bussola.oficio.app` (`ORDO_SITE_BASE_URL`), este
+    último só para `/firmware/...` e para os caminhos `/c/...` que a API
+    assinou (`net::sitePathAllowed`). Um caminho vindo do payload ou do
+    manifesto que não passe nesse filtro é descartado; nenhuma URL completa
+    vinda de fora é seguida. O token do CMS nunca entra no firmware: quem lê o
+    CMS é a função em `site/api/c.js`.
+12. **Foto e texto ficam no CMS.** Nada disso é copiado para a API nem
+    versionado aqui (o simulador pinta a sua própria foto). A função do site
+    devolve sempre JPEG baseline 4:2:0 de 466 x 466 e texto só com os glifos
+    das fontes do firmware (`site/api/_content.js`, `inFont`); mudou as faixas
+    em `tools/make_fonts.sh`, mude lá também. A assinatura dos caminhos é a
+    mesma fórmula em Ruby (`Devices::ContentLinks`, na estevao-api) e em Node:
+    o teste `signature: the very values the API mints` trava as duas.
+13. **Atualização pelo Wi-Fi não pode deixar um tijolo.** Só instala por
+    ordem do dono; confere tamanho, SHA-256 e, havendo chave pública, a
+    assinatura antes de trocar a partição de boot; grava em tarefa própria; e
+    só confirma o firmware novo (`net::otaConfirmRunning`) depois de a tela
+    subir. Toda versão publicada sai de `tools/release.py build`, com o número
+    subido em `platformio.ini`. A chave privada de assinatura nunca entra no
+    repositório.
 
 ## Fluxo de trabalho
 
@@ -59,5 +90,6 @@ leem a API: a única rota que o token de aparelho abre é
 3. Bússola: `cd compass && pio run -e amoled175c && pio run -e amoled175`.
    Miblo: `node sim.mjs check miblo/ordo-dia` (e a página aberta no navegador
    com `page.html#dia`, `#leituras`, `#vinculo`...).
+   Site: `cd site && npm install && npm test`.
 4. Atualizar o README se mudou comportamento visível ou configuração.
 5. Commitar.

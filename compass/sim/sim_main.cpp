@@ -1,6 +1,10 @@
 // Draws every screen of the compass to image files, on a computer.
-//   sim <out-dir> <today.json>
-// The frames are raw PPM; to_png.py cuts the round glass and writes PNGs.
+//   sim <out-dir> <today.json>            every screen, one frame each
+//   sim <out-dir> <today.json> exercise   pokes every control (run under ASAN)
+//   sim <out-dir> <today.json> movie      a walk through the screens, frame by
+//                                         frame, with the dips and entrances
+// The frames are raw PPM; to_png.py cuts the round glass and writes PNGs, and
+// to_gif.py strings the movie's frames together.
 
 #include <lvgl.h>
 
@@ -8,6 +12,9 @@
 #include <sstream>
 #include <string>
 
+#include <vector>
+
+#include "content/art.h"
 #include "ui/ui.h"
 #include "ui/ui_internal.h"
 
@@ -29,10 +36,87 @@ void flush(lv_display_t* d, const lv_area_t* area, uint8_t* px) {
   lv_display_flush_ready(d);
 }
 
+// ---- what the firmware keeps in flash, here read from a folder
+std::string contentDir = "content";
+
+std::string slurp(const std::string& path) {
+  std::ifstream in(path, std::ios::binary);
+  std::stringstream buffer;
+  buffer << in.rdbuf();
+  return buffer.str();
+}
+
+// The picture goes through the same decoder as on the board.
+ui::Art artFor(const String& slug) {
+  static std::vector<uint16_t> pixels(static_cast<size_t>(content::kArtSide) * content::kArtSide);
+  static std::string shown;
+  ui::Art art;
+  const std::string bytes = slurp(contentDir + "/" + slug + ".jpg");
+  if (bytes.empty()) return art;
+  if (shown != slug) {
+    if (!content::decodeArt(reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size(), pixels.data())) {
+      fprintf(stderr, "sim: %s.jpg did not decode\n", slug.c_str());
+      shown.clear();
+      return art;
+    }
+    shown = slug;
+  }
+  art.pixels = reinterpret_cast<const uint8_t*>(pixels.data());
+  art.side = content::kArtSide;
+  return art;
+}
+
+ui::CelebrationText textFor(const String& slug) {
+  ui::CelebrationText text;
+  const std::string json = slurp(contentDir + "/" + slug + ".pt-BR.json");
+  model::parseCelebrationText(json.c_str(), json.size(), text);
+  return text;
+}
+
+// A day with a celebration, as a sync would have left it: the sample's
+// Wednesday, with the offices and the week it had on Monday.
+model::Today celebrationDay(const model::Today& base, int ahead) {
+  model::Today day = model::viewFor(base, base.day.days + ahead);
+  day.officesKnown = true;
+  for (int i = 0; i < 4; i++) day.offices[i] = base.offices[i];
+  day.completedToday = base.completedToday;
+  for (int i = 0; i < 7; i++) day.week[i] = base.week[i];
+  day.hasWeek = base.hasWeek;
+  return day;
+}
+
+// With animations on, a screen change takes a dip and a rise: every wait is
+// stretched so that what follows finds the screen it expects.
+bool animated = false;
+// In a movie every step is a frame on disk.
+bool filming = false;
+void writeFrame(const char* path, uint8_t light);
+
+void step() {
+  nowMs += 33;
+  lv_timer_handler();
+  if (filming) {
+    char path[512];
+    snprintf(path, sizeof(path), "%s/f%04d.ppm", outDir.c_str(), ++shot);
+    writeFrame(path, ui::brightnessScale());
+  }
+}
+
 void settle(int steps = 12) {
-  for (int i = 0; i < steps; i++) {
-    nowMs += 33;
-    lv_timer_handler();
+  if (animated) steps += 14;
+  for (int i = 0; i < steps; i++) step();
+}
+
+// The glass as the eye sees it: what LVGL drew, times the panel's light.
+void writeFrame(const char* path, uint8_t light) {
+  std::ofstream f(path, std::ios::binary);
+  f << "P6\n" << kSize << " " << kSize << "\n255\n";
+  for (int i = 0; i < kSize * kSize; i++) {
+    const uint16_t c = frame[i];
+    const unsigned char rgb[3] = {static_cast<unsigned char>(((c >> 11) & 0x1F) * 255 / 31 * light / 255),
+                                  static_cast<unsigned char>(((c >> 5) & 0x3F) * 255 / 63 * light / 255),
+                                  static_cast<unsigned char>((c & 0x1F) * 255 / 31 * light / 255)};
+    f.write(reinterpret_cast<const char*>(rgb), 3);
   }
 }
 
@@ -40,15 +124,7 @@ void snap(const char* name) {
   settle();
   char path[512];
   snprintf(path, sizeof(path), "%s/%02d-%s.ppm", outDir.c_str(), ++shot, name);
-  std::ofstream f(path, std::ios::binary);
-  f << "P6\n" << kSize << " " << kSize << "\n255\n";
-  for (int i = 0; i < kSize * kSize; i++) {
-    const uint16_t c = frame[i];
-    const unsigned char rgb[3] = {static_cast<unsigned char>(((c >> 11) & 0x1F) * 255 / 31),
-                                  static_cast<unsigned char>(((c >> 5) & 0x3F) * 255 / 63),
-                                  static_cast<unsigned char>((c & 0x1F) * 255 / 31)};
-    f.write(reinterpret_cast<const char*>(rgb), 3);
-  }
+  writeFrame(path, 255);
 }
 
 // A pointer for the simulator: taps go through LVGL's own input path, so a
@@ -66,7 +142,7 @@ void tap(int32_t x, int32_t y) {
   pointerAt.x = x;
   pointerAt.y = y;
   pointerDown = true;
-  settle(4);
+  for (int i = 0; i < 4; i++) step();
   pointerDown = false;
   settle(4);
 }
@@ -94,7 +170,8 @@ void tapRow(const char* label) {
     tapObject(row);
     return;
   }
-  fprintf(stderr, "sim: row \"%s\" not found\n", label);
+  fprintf(stderr, "sim: row \"%s\" not found (mode %d, %s)\n", label, static_cast<int>(ui::detail::S.mode),
+          lv_screen_active() == ui::detail::S.settings ? "list" : (lv_screen_active() == ui::detail::S.sub ? "sub" : "other"));
 }
 
 // Pokes everything a finger or a button can reach. Nothing here checks a
@@ -102,6 +179,7 @@ void tapRow(const char* label) {
 // screen frees something it still uses.
 void exercise(const model::Today& today) {
   using namespace ui;
+  using ui::detail::S;
   setToday(today);
   goHome();
   for (int lap = 0; lap < 2; lap++) {
@@ -111,11 +189,11 @@ void exercise(const model::Today& today) {
   }
   onBootLongPress();
 
-  // Menu rows by touch, each tool, and the way back.
+  // The four tiles of the menu by touch, each tool, and the way back.
   for (int item = 0; item < 4; item++) {
     detail::showPage(Page::Menu);
     settle(2);
-    tap(233, 141 + item * 66);
+    tap(item % 2 == 0 ? 154 : 312, item < 2 ? 154 : 312);
     settle(2);
     if (item == 0) {
       for (int i = 0; i < 40; i++) { tap(233, 150); }           // past the end of the rosary and round again
@@ -134,11 +212,21 @@ void exercise(const model::Today& today) {
     } else if (item == 2) {
       tap(233, 233);
     } else {
-      for (const char* row : {"Apaga em", "Brilho", "Escurecer à noite", "Tela inicial", "Toque acorda", "Acesa na tomada", "Som",
-                              "Volume", "Sino às 6h, 12h e 18h", "Sincronizar a cada", "Sincronizar agora"}) {
+      for (const char* row : {"Apaga em", "Brilho", "Escurecer à noite", "Toque acorda", "Acesa na tomada", "Som", "Volume",
+                              "Sino às 6h, 12h e 18h", "Sincronizar a cada", "Sincronizar agora"}) {
         tapRow(row);
         tapRow(row);
       }
+      for (int i = 0; i < 5; i++) tapRow("Tela inicial");        // all five and round again
+      // Following the app, the reminder rows only show the app's times...
+      S.prefs.remindersFromApp = true;
+      tapRow("Manhã");
+      settle(2);
+      // ...and set here, each opens its editor.
+      S.prefs.remindersFromApp = false;
+      tapRow("Horários");
+      tapRow("Horários");
+      S.prefs.remindersFromApp = false;
       tapRow("Manhã");
       for (int i = 0; i < 3; i++) { tap(111, 267); tap(177, 267); tap(289, 267); tap(355, 267); }
       tap(300, 364);                                           // Pronto
@@ -153,6 +241,22 @@ void exercise(const model::Today& today) {
       tapRow("Sobre");
       onSwipe(Swipe::Up);
       onSwipe(Swipe::Right);
+      settle(2);
+      // The update screen, in each state the search can be in.
+      tapRow("Atualização");
+      for (UpdateState state : {UpdateState::Checking, UpdateState::Available, UpdateState::UpToDate, UpdateState::Failed}) {
+        Status st = S.status;
+        st.update = state;
+        st.updateVersion = state == UpdateState::Available ? "9.9.9" : "";
+        st.batteryPercent = state == UpdateState::Available ? 20 : 80;
+        setStatus(st);
+        settle(1);
+        tap(233, 296);                                         // Procurar agora
+        tap(233, 324);                                         // Instalar
+        settle(1);
+      }
+      onBootPress();
+      settle(2);
       for (const char* row : {"Desligar", "Desvincular do Ordo", "Apagar tudo"}) {
         tapRow(row);
         tap(170, 346);                                         // Cancelar
@@ -160,6 +264,32 @@ void exercise(const model::Today& today) {
       }
       onBootPress();
     }
+  }
+
+  // The celebration, if the day has one: open, read, back, closed, with a
+  // picture or its text arriving in the middle.
+  if (today.day.celebration.present()) {
+    detail::showPage(Page::Celebration);
+    settle(2);
+    tap(233, 200);                                             // opens
+    settle(6);
+    tap(233, 412);                                             // Ler tudo
+    settle(2);
+    onSwipe(Swipe::Up);
+    onSwipe(Swipe::Down);
+    contentArrived(today.day.celebration.slug);
+    onSwipe(Swipe::Right);                                     // back to the page, still open
+    settle(2);
+    tap(233, 120);                                             // closes
+    contentArrived(today.day.celebration.slug);
+    tap(233, 200);
+    onSwipe(Swipe::Up);                                        // leaves in the middle of the slide
+    settle(2);
+    onSwipe(Swipe::Down);
+    tap(233, 412);
+    onBootPress();
+    onBootPress();
+    settle(2);
   }
 
   // Notices over the day, dismissed every way there is.
@@ -187,6 +317,64 @@ void exercise(const model::Today& today) {
   settle(2);
   setToday(today);
   settle(2);
+
+  // An impatient hand: swipes, presses and notices that land in the middle
+  // of a screen change, with no wait in between.
+  for (int i = 0; i < 40; i++) {
+    switch (i % 8) {
+      case 0: onSwipe(Swipe::Up); break;
+      case 1: onSwipe(Swipe::Left); step(); break;
+      case 2: onBootPress(); step(); step(); break;
+      case 3: detail::showPage(Page::Menu); step(); detail::openBeads(); onBootPress(); break;
+      case 4: step(); step(); step(); onBootPress(); onBootLongPress(); detail::goBack(); break;
+      case 5: detail::openSettings(); step(); showReminder(i % 4); step(); break;
+      case 6: dismissNotice(); detail::openSilence(); setSilence(true, 300); step(); setSilence(false, 0); break;
+      case 7: detail::openTorch(); step(); step(); goHome(); for (int k = 0; k < i; k++) step(); break;
+    }
+    if (i % 5 == 0) { detail::showPage(Page::Celebration); step(); tap(233, 200); detail::openReading(); step(); showUpdating("9.9.9", i); }
+    if (i % 7 == 0) { detail::openUpdate(); step(); Status st = S.status; st.update = static_cast<UpdateState>(i % 5); st.updateVersion = "9.9.9"; setStatus(st); }
+  }
+  settle(20);
+}
+
+// A walk through the screens for the movie: what a thumb would do on the way
+// from waking it to counting a few beads and changing a setting.
+void film(const model::Today& today) {
+  using namespace ui;
+  auto wait = [](int frames) { for (int i = 0; i < frames; i++) step(); };
+  setToday(today);                       // the wake: the light rises on "Agora"
+  wait(48);
+  onSwipe(Swipe::Up);                    // the celebration: its picture whole
+  wait(60);
+  tap(233, 200);                         // a touch: the words come up
+  wait(50);
+  tap(233, 412);                         // Ler tudo
+  wait(40);
+  lv_obj_scroll_to_y(lv_obj_get_child(lv_screen_active(), 0), 260, LV_ANIM_ON);
+  wait(45);
+  onSwipe(Swipe::Right);                 // back to the page
+  wait(36);
+  for (int i = 0; i < 5; i++) {          // round the carousel to the menu
+    onSwipe(Swipe::Up);
+    wait(42);
+  }
+  tap(154, 154);                         // Contas
+  wait(34);
+  for (int i = 0; i < 4; i++) { tap(233, 150); wait(8); }
+  onSwipe(Swipe::Down);                  // back to the menu
+  wait(30);
+  tap(312, 312);                         // Ajustes
+  wait(34);
+  tapRow("Brilho");
+  wait(10);
+  tapRow("Tela inicial");
+  wait(10);
+  tapRow("Tela inicial");
+  wait(18);
+  onSwipe(Swipe::Right);
+  wait(30);
+  onBootLongPress();                     // home
+  wait(45);
 }
 
 // Clicks the n-th row of a scrolling list (the first child of the screen).
@@ -238,14 +426,18 @@ int main(int argc, char** argv) {
   lv_indev_set_type(pointer, LV_INDEV_TYPE_POINTER);
   lv_indev_set_read_cb(pointer, pointerRead);
 
+  const char* mode = argc > 3 ? argv[3] : "";
   ui::Prefs prefs;
   prefs.reminder[0] = 7 * 60;
   prefs.reminder[2] = 18 * 60;
+  // The stills are taken with animations off: each call below leaves its
+  // screen finished, with nothing half way.
+  prefs.animations = false;
   ui::Actions actions;
   actions.prefsChanged = [](const ui::Prefs&) {};
   actions.diagnostics = []() {
     ui::Diagnostics d;
-    d.firmware = "0.2.0";
+    d.firmware = "0.3.0";
     d.board = "ESP32-S3-Touch-AMOLED-1.75C";
     d.deviceName = "Chaveiro";
     d.batteryPercent = 82;
@@ -257,6 +449,9 @@ int main(int argc, char** argv) {
     return d;
   };
   actions.silence = [](int minutes) { ui::setSilence(minutes > 0, static_cast<uint32_t>(minutes) * 60); };
+  if (const char* dir = getenv("ORDO_SIM_CONTENT")) contentDir = dir;
+  actions.art = artFor;
+  actions.celebrationText = textFor;
   ui::init(prefs, actions);
 
   ui::Status st;
@@ -264,10 +459,24 @@ int main(int argc, char** argv) {
   st.minuteOfDay = 14 * 60 + 32;
   st.batteryPercent = 82;
   st.linked = true;
+  st.wifiBars = 3;
   st.syncedMinutesAgo = 12;
 
-  // `sim <out> <json> exercise`: poke every control instead of drawing.
-  if (argc > 3 && strcmp(argv[3], "exercise") == 0) {
+  // `sim <out> <json> movie`: frames of a walk through the screens.
+  if (strcmp(mode, "movie") == 0) {
+    prefs.animations = true;
+    actions.bell = [](int) {};
+    ui::init(prefs, actions);
+    ui::setStatus(st);
+    filming = true;
+    film(celebrationDay(today, 2));
+    printf("%d frames in %s\n", shot, outDir.c_str());
+    return 0;
+  }
+
+  // `sim <out> <json> exercise`: poke every control instead of drawing, once
+  // with every change immediate and once through the dips and entrances.
+  if (strcmp(mode, "exercise") == 0) {
     actions.bell = [](int) {};
     actions.syncNow = []() {};
     actions.openWifiPortal = []() {};
@@ -276,16 +485,31 @@ int main(int argc, char** argv) {
     actions.factoryReset = []() {};
     actions.powerOff = []() {};
     actions.sleepNow = []() {};
-    ui::init(prefs, actions);
-    ui::Status st0;
-    st0.clockValid = true;
-    st0.minuteOfDay = 14 * 60 + 32;
-    st0.linked = true;
-    ui::setStatus(st0);
-    exercise(today);
-    exercise(model::viewFor(today, today.day.days + 3));
-    exercise(model::viewFor(today, today.day.days + 40));
-    printf("exercise finished\n");
+    actions.checkUpdate = []() {};
+    actions.installUpdate = []() {};
+    int moves = 0;
+    actions.brightnessMoved = [&moves]() { moves++; };
+    for (int pass = 0; pass < 2; pass++) {
+      animated = pass == 1;
+      prefs.animations = animated;
+      ui::init(prefs, actions);
+      ui::detail::S.prefs = prefs;
+      ui::Status st0;
+      st0.clockValid = true;
+      st0.minuteOfDay = 14 * 60 + 32;
+      st0.linked = true;
+      ui::setStatus(st0);
+      exercise(today);
+      exercise(celebrationDay(today, 2));                       // a celebration with its picture
+      exercise(model::viewFor(today, today.day.days + 5));      // one whose picture never came
+      exercise(model::viewFor(today, today.day.days + 3));
+      exercise(model::viewFor(today, today.day.days + 40));
+      if (ui::changingScreen() || ui::brightnessScale() != 255) {
+        printf("exercise left the glass dark (scale %d)\n", ui::brightnessScale());
+        return 1;
+      }
+    }
+    printf("exercise finished, the light moved %d times\n", moves);
     return 0;
   }
 
@@ -372,6 +596,45 @@ int main(int argc, char** argv) {
   snap("silencio-fim");
   ui::showLowBattery();
   snap("bateria");
+
+  // ---- a day with a celebration
+  ui::setToday(celebrationDay(today, 2));
+  ui::detail::showPage(ui::Page::Now);
+  snap("agora-comemoracao");
+  ui::detail::showPage(ui::Page::Celebration);
+  snap("comemoracao");
+  tap(233, 200);
+  snap("comemoracao-aberta");
+  ui::detail::openReading();
+  snap("comemoracao-texto");
+  lv_obj_scroll_to_y(lv_obj_get_child(ui::detail::S.sub, 0), 330, LV_ANIM_OFF);
+  snap("comemoracao-texto-2");
+  // Its picture has not come (or the CMS has none): the same page, in type.
+  ui::setToday(celebrationDay(today, 5));
+  ui::detail::showPage(ui::Page::Celebration);
+  snap("comemoracao-sem-foto");
+  // A day of abstinence.
+  ui::setToday(celebrationDay(today, 4));
+  ui::detail::showPage(ui::Page::Now);
+  snap("agora-jejum");
+  ui::setToday(today);
+
+  // ---- the firmware update
+  st.update = ui::UpdateState::Available;
+  st.updateVersion = "0.4.1";
+  st.updateNotes = "Fotos abrem mais depressa e o sino das horas ganhou volume próprio.";
+  ui::setStatus(st);
+  ui::detail::openUpdate();
+  snap("atualizacao-disponivel");
+  ui::showUpdating("0.4.1", 37);
+  snap("atualizando");
+  st.update = ui::UpdateState::UpToDate;
+  st.updateVersion = "";
+  st.updateNotes = "";
+  ui::setStatus(st);
+  ui::detail::openUpdate();
+  snap("atualizacao-em-dia");
+  ui::detail::showPage(ui::Page::Now);
 
   // ---- other days
   model::Today done = today;

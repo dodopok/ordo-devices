@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stddef.h>
 #include <stdint.h>
 
 // What the compass talks to and how it spends its battery. Nothing here is
@@ -11,6 +12,17 @@
 #endif
 #ifndef ORDO_API_FALLBACK_URL
 #define ORDO_API_FALLBACK_URL "https://api.oficio.app/api/v1"
+#endif
+// bussola.oficio.app: where a newer firmware is published, and the gateway
+// that hands over a celebration's picture and text from the CMS. The device
+// only ever asks this host for /firmware/... and for the /c/... paths the API
+// signed for it.
+#ifndef ORDO_SITE_BASE_URL
+#define ORDO_SITE_BASE_URL "https://bussola.oficio.app"
+#endif
+// Which build of the firmware this board takes from the site's manifest.
+#ifndef ORDO_BOARD_KEY
+#define ORDO_BOARD_KEY "unknown"
 #endif
 #ifndef ORDO_DEVICE_CLIENT_ID
 #define ORDO_DEVICE_CLIENT_ID "ordo-compass"
@@ -45,6 +57,25 @@ constexpr uint32_t kAfterMidnightSeconds = 120;
 constexpr uint32_t kRetrySeconds = 5 * 60;
 constexpr uint32_t kRateLimitedSeconds = 15 * 60;
 constexpr uint32_t kHttpTimeoutMs = 12 * 1000;
+
+// ---- pictures and texts of the celebrations
+// A picture of the glass's size is 20 to 65 KB; a text, under 5 KB.
+constexpr size_t kArtMaxBytes = 120 * 1024;
+constexpr size_t kTextMaxBytes = 12 * 1024;
+// Files fetched in one sync: today's first, then the days ahead. On battery
+// the radio is not held for the whole week at once; what is left comes with
+// the next syncs.
+constexpr int kContentPerSyncBattery = 6;
+constexpr int kContentPerSyncMains = 16;
+
+// ---- firmware updates
+constexpr size_t kManifestMaxBytes = 4 * 1024;
+// Looked for at most this often, and only with the screen on or on mains.
+constexpr int64_t kUpdateCheckEverySeconds = 24 * 3600;
+// Installing wants mains power, or at least this much battery.
+constexpr int kUpdateMinBatteryPercent = 40;
+constexpr size_t kFirmwareMinBytes = 256 * 1024;
+constexpr size_t kFirmwareMaxBytes = 6 * 1024 * 1024;
 
 // ---- the screen
 constexpr uint8_t kBrightness[3] = {70, 140, 230};

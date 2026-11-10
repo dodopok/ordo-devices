@@ -33,6 +33,27 @@ struct Office {
   bool done = false;
 };
 
+// Who or what the day commemorates, when it commemorates something. The
+// picture and the text are not in the payload: `artPath` and `textPath` are
+// signed paths on the content host (bussola.oficio.app), fetched once and
+// kept on the device.
+struct Celebration {
+  String name;      // "Martinho de Tours"
+  String type;      // "lesser_feast", "festival", ...
+  String epithet;   // "Monge e Bispo"
+  String year;      // "397"
+  String slug;      // "celebration-martin-of-tours": the key its content is stored under
+  String artPath;   // "/c/<slug>.jpg?t=..&s=.."; empty: no picture to fetch
+  String textPath;  // "/c/<slug>.<locale>.json?t=..&s=.."
+
+  bool present() const { return !name.isEmpty(); }
+  // "Monge e Bispo, 397"
+  String byline() const {
+    if (epithet.isEmpty()) return year;
+    return year.isEmpty() ? epithet : String(epithet + ", " + year);
+  }
+};
+
 // One liturgical day as the API describes it: today, or one of the days of
 // the `upcoming` window. Strings stay in the book's own language.
 struct DayInfo {
@@ -46,6 +67,8 @@ struct DayInfo {
   bool isSunday = false;
   bool fastDay = false;
   bool holyDay = false;
+  String observance;  // "Jejum": the fast or abstinence the book appoints, in a word or two
+  Celebration celebration;
   // False when the API never described this day and it was worked out from
   // the year ring alone: season and colour are right, title and readings are
   // not known.
@@ -54,6 +77,16 @@ struct DayInfo {
   std::vector<Reading> daily;
   std::vector<Reading> morning;
   std::vector<Reading> evening;
+};
+
+// Where today stands in its season, in whole days.
+struct SeasonProgress {
+  bool known = false;
+  int day = 0;         // 1-based
+  int days = 0;        // the season's length
+  long endsDays = -1;  // its last day, days since 1970-01-01
+  String nextName;     // the season that follows: "Advento"
+  int nextInDays = 0;
 };
 
 // GET /api/v1/device/today, as the screens use it.
@@ -77,6 +110,15 @@ struct Today {
   // False on a day the device rolled to by itself: nobody has told it yet
   // which offices were prayed.
   bool officesKnown = true;
+
+  SeasonProgress season;
+  // The reminders set in the app, minute of the day per office; -1: none.
+  int16_t reminders[4] = {-1, -1, -1, -1};
+  bool hasReminders = false;  // the account has at least one
+  // Offices prayed on each of the last seven days, oldest first, today last;
+  // -1 where it is not known.
+  int8_t week[7] = {-1, -1, -1, -1, -1, -1, -1};
+  bool hasWeek = false;
 
   uint32_t refreshIntervalSeconds = 300;
   uint32_t dayEndsInSeconds = 0;

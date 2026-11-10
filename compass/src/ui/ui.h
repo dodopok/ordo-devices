@@ -6,6 +6,7 @@
 #include <functional>
 #include <vector>
 
+#include "../model/content.h"
 #include "../model/today.h"
 
 // The screens. Nothing here touches the board or the network: the controller
@@ -14,8 +15,9 @@
 // on a computer.
 namespace ui {
 
-// The carousel, in order. It wraps: after Menu comes Now again.
-enum class Page { Now, Compass, Readings, Offices, Week, Menu };
+// The carousel, in order. It wraps: after Menu comes Now again. Celebration
+// is there only on a day that commemorates someone or something.
+enum class Page { Now, Celebration, Compass, Readings, Offices, Week, Menu };
 
 // What the owner can change on the settings screens. The controller keeps it
 // in NVS; the screens edit a copy and report every change.
@@ -23,16 +25,22 @@ struct Prefs {
   uint8_t screenSeconds = 15;  // 10, 15, 30, 60
   uint8_t brightness = 1;      // 0 low, 1 medium, 2 high
   bool nightDim = true;        // dimmer between 22h and 6h
-  uint8_t homeFace = 0;        // 0 Agora, 1 Bússola
+  uint8_t homeFace = 0;        // the screen a wake opens on: 0 Agora, 1 Bússola, 2 Leituras, 3 Ofícios, 4 Semana
   bool touchWakes = false;     // off: only the buttons wake the screen
   bool deskAlwaysOn = true;    // on USB power the screen stays on
   bool sound = true;
   uint8_t volume = 1;          // 0 low, 1 medium, 2 high
   bool hourBell = false;       // a bell at 6h, 12h and 18h
   int16_t reminder[4] = {-1, -1, -1, -1};  // minute of the day per office, -1: off
+  // Ring at the times set in the app instead, whenever the account has any.
+  bool remindersFromApp = true;
   uint8_t syncHours = 4;       // 0: only when woken; else every 2, 4, 6 or 12 hours
   uint8_t beadsMode = 0;       // 0 Anglican rosary (33), 1 rope of 33, 2 of 50, 3 of 100
+  bool animations = true;      // screens change through a short dip; faces play an entrance
 };
+
+// Where the search for a newer firmware stands.
+enum class UpdateState { Unknown, Checking, UpToDate, Available, Failed };
 
 // What changes by itself: the clock, the battery, the radio.
 struct Status {
@@ -43,9 +51,27 @@ struct Status {
   bool onUsb = false;
   bool syncing = false;
   bool linked = false;
+  // The Wi-Fi mark: -1 no network set up; 0 the last try found none; 1 to 3
+  // the signal of the last one joined.
+  int wifiBars = -1;
   // Minutes since the day on screen was confirmed by the API; UINT32_MAX: never.
   uint32_t syncedMinutesAgo = UINT32_MAX;
+  UpdateState update = UpdateState::Unknown;
+  String updateVersion;  // the firmware on offer, when `update` is Available
+  String updateNotes;    // what it brings, one or two sentences
 };
+
+// A celebration's picture as the screens take it: square, RGB565, already
+// decoded. `pixels` stays valid until a picture is asked for another slug.
+struct Art {
+  const uint8_t* pixels = nullptr;
+  uint16_t side = 0;
+};
+
+// And its text: a summary that fits the glass, and the post in headings and
+// paragraphs for whoever wants to read on.
+using model::CelebrationText;
+using model::TextBlock;
 
 // The "Sobre" screen, asked for when it opens.
 struct Diagnostics {
@@ -73,6 +99,17 @@ struct Actions {
   // Starts a time of silence of that many minutes; 0 ends the one running.
   std::function<void(int minutes)> silence;
   std::function<Diagnostics()> diagnostics;
+  // The celebration's picture and text, by slug, from what the compass has
+  // stored. Empty answers when it has not fetched them (yet).
+  std::function<Art(const String& slug)> art;
+  std::function<CelebrationText(const String& slug)> celebrationText;
+  // Looks for a newer firmware; installs the one on offer.
+  std::function<void()> checkUpdate;
+  std::function<void()> installUpdate;
+  // The dip of a screen change moved (see brightnessScale): set the panel
+  // now, not at the controller's next pass, so that a screen is never
+  // swapped with the light on.
+  std::function<void()> brightnessMoved;
 };
 
 // Creates the screens. Call once after the display is up.
@@ -100,6 +137,8 @@ void showReminder(int office);
 void showHourBell(int hour);
 void showSilenceDone();
 void showLowBattery();
+// A firmware being written: how far it is, 0..100.
+void showUpdating(const String& version, int percent);
 // Leaves a reminder or a bell and goes back to the day.
 void dismissNotice();
 
@@ -108,6 +147,9 @@ void dismissNotice();
 void setToday(const model::Today& today);
 // Forgets the day (after an unlink): notices are all there is to show.
 void clearDay();
+// A celebration's picture or text has just been stored: the screens that
+// show it draw themselves again.
+void contentArrived(const String& slug);
 void setStatus(const Status& status);
 // A time of silence under way, and how much of it is left.
 void setSilence(bool running, uint32_t remainingSeconds);
@@ -126,6 +168,15 @@ enum class Swipe { Up, Down, Left, Right };
 bool onSwipe(Swipe dir);
 void onBootPress();
 void onBootLongPress();
+
+// Screen changes dip through black: the panel's own brightness does the
+// fading, which is smooth, while the slow part (redrawing 466 x 466 pixels)
+// happens in the dark. This is the factor, 0..255, the controller multiplies
+// its brightness by.
+uint8_t brightnessScale();
+// True while such a change is under way. Anything that blocks for a while (the
+// bell) waits for it to end, or the glass would freeze half lit.
+bool changingScreen();
 
 // What the screen on show asks of the power policy.
 struct PowerHint {
