@@ -64,13 +64,29 @@ bool otaRequiresSignature() {
 #endif
 }
 
-OtaCheck otaCheck(Site& site, const String& language, model::FirmwareOffer& offer) {
+String siteFailure(int status, int tlsError) {
+  char text[48];
+  if (status > 0) {
+    snprintf(text, sizeof(text), "HTTP %d", status);
+  } else if (tlsError != 0) {
+    snprintf(text, sizeof(text), "conexão %d, TLS -0x%04X", status, static_cast<unsigned>(-tlsError));
+  } else {
+    snprintf(text, sizeof(text), "conexão %d", status);
+  }
+  return String(text);
+}
+
+OtaCheck otaCheck(Site& site, const String& language, model::FirmwareOffer& offer, String* detail) {
   offer = model::FirmwareOffer();
   std::vector<uint8_t> body;
   const int code = site.get("/firmware/manifest.json", body, cfg::kManifestMaxBytes);
-  if (code != 200 || body.empty()) return OtaCheck::Failed;
+  if (code != 200 || body.empty()) {
+    if (detail) *detail = siteFailure(code, code < 0 ? site.lastTlsError() : 0);
+    return OtaCheck::Failed;
+  }
   model::FirmwareOffer found;
   if (!model::parseManifest(reinterpret_cast<const char*>(body.data()), body.size(), ORDO_BOARD_KEY, language, found)) {
+    if (detail) *detail = String("manifesto sem " ORDO_BOARD_KEY);
     return OtaCheck::Failed;
   }
   if (!model::versionNewer(found.version.c_str(), ORDO_FIRMWARE_VERSION)) return OtaCheck::UpToDate;

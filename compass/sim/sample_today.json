@@ -703,7 +703,8 @@
   },
   "streak": {
     "current": 12,
-    "longest": 40
+    "longest": 40,
+    "remind_at": "22:00"
   },
   "season_progress": {
     "starts_on": "2026-05-25",

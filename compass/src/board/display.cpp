@@ -10,9 +10,12 @@
 namespace board {
 namespace {
 
-// One sixth of the screen per buffer: 466 x 78 x 2 bytes = 72 KB each, small
-// enough to leave internal RAM for Wi-Fi and TLS, large enough that a full
-// redraw takes six flushes rather than dozens.
+// One sixth of the screen: 466 x 78 x 2 bytes = 72 KB, small enough to leave
+// internal RAM for Wi-Fi and TLS, large enough that a full redraw takes six
+// flushes rather than dozens. One buffer, not two: the flush below returns
+// only when the pixels are on the panel, so LVGL never needs a second one to
+// draw into meanwhile, and TLS (which this SDK keeps in internal RAM) has
+// those 72 KB instead.
 constexpr int32_t kBufferRows = LCD_HEIGHT / 6 + 1;
 constexpr size_t kBufferBytes = LCD_WIDTH * kBufferRows * sizeof(uint16_t);
 
@@ -62,16 +65,15 @@ bool displayInit() {
   lv_init();
   lv_tick_set_cb(tickCb);
 
-  void* buf1 = heap_caps_malloc(kBufferBytes, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
-  void* buf2 = heap_caps_malloc(kBufferBytes, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
-  if (!buf1 || !buf2) {
+  void* buffer = heap_caps_malloc(kBufferBytes, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+  if (!buffer) {
     return false;
   }
 
   disp = lv_display_create(LCD_WIDTH, LCD_HEIGHT);
   lv_display_set_color_format(disp, LV_COLOR_FORMAT_RGB565);
   lv_display_set_flush_cb(disp, flushCb);
-  lv_display_set_buffers(disp, buf1, buf2, kBufferBytes, LV_DISPLAY_RENDER_MODE_PARTIAL);
+  lv_display_set_buffers(disp, buffer, nullptr, kBufferBytes, LV_DISPLAY_RENDER_MODE_PARTIAL);
   lv_display_add_event_cb(disp, roundAreaCb, LV_EVENT_INVALIDATE_AREA, nullptr);
   return true;
 }

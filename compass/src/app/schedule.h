@@ -19,6 +19,8 @@ struct Moment {
 
 struct Plan {
   int16_t reminder[4] = {-1, -1, -1, -1};  // minute of the day per office, -1: off
+  // "Nothing prayed yet today": the app's evening nudge, minute of the day.
+  int16_t streakReminder = -1;
   bool hourBell = false;                   // 6h, 12h, 18h
   uint8_t syncHours = 4;                   // 0: never by itself
   bool canSync = false;                    // linked, and at least one Wi-Fi network known
@@ -26,6 +28,7 @@ struct Plan {
 
 struct Due {
   int reminder = -1;   // office index
+  bool streak = false; // the streak reminder's minute has come
   int bellHour = -1;   // 6, 12 or 18
   bool silence = false;
 };

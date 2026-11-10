@@ -125,6 +125,46 @@ void testDue() {
   due = app::takeDue(at(local(7, 5, 0, 1), 90000), plan, rtc);
   CHECK_EQ(due.reminder, 0);
 
+  // A reminder moved to a later hour the same day (the owner changed it in
+  // the app after it had rung) is a new appointment...
+  plan.reminder[0] = 7 * 60 + 30;
+  due = app::takeDue(at(local(7, 30, 5, 1), 91500), plan, rtc);
+  CHECK_EQ(due.reminder, 0);
+  due = app::takeDue(at(local(7, 31, 0, 1), 91560), plan, rtc);
+  CHECK_EQ(due.reminder, -1);
+  // ...and one moved to an hour already gone is let pass, not rung late.
+  plan.reminder[0] = 5 * 60;
+  due = app::takeDue(at(local(8, 0, 0, 1), 93300), plan, rtc);
+  CHECK_EQ(due.reminder, -1);
+
+  // Two offices at the same minute: one now, the other at the next look.
+  app::Plan both;
+  both.reminder[1] = 12 * 60;
+  both.reminder[3] = 12 * 60;
+  sys::RtcState twice = {};
+  twice.firedDay = -1;
+  CHECK_EQ(app::takeDue(at(local(12, 0, 1), 100), both, twice).reminder, 1);
+  CHECK_EQ(app::takeDue(at(local(12, 0, 2), 101), both, twice).reminder, 3);
+  CHECK_EQ(app::takeDue(at(local(12, 0, 3), 102), both, twice).reminder, -1);
+
+  // The streak reminder: once, at its minute; with an office due at the same
+  // minute both are reported and the caller shows the office.
+  app::Plan evening;
+  evening.streakReminder = 22 * 60;
+  evening.reminder[3] = 22 * 60;
+  sys::RtcState night = {};
+  night.firedDay = -1;
+  CHECK(!app::takeDue(at(local(21, 59, 58), 100), evening, night).streak);
+  due = app::takeDue(at(local(22, 0, 1), 103), evening, night);
+  CHECK(due.streak);
+  CHECK_EQ(due.reminder, 3);
+  CHECK(!app::takeDue(at(local(22, 0, 30), 132), evening, night).streak);
+  // Found out an hour late: let pass.
+  sys::RtcState late = {};
+  late.firedDay = -1;
+  CHECK(!app::takeDue(at(local(23, 0, 0), 100), evening, late).streak);
+  CHECK(!app::takeDue(at(local(23, 0, 1), 101), evening, late).streak);
+
   // Silence ends by the raw clock, with or without a valid time.
   rtc.silenceEndsRaw = 500;
   app::Moment blind;
@@ -154,6 +194,19 @@ void testSchedule() {
   // Once rung, tomorrow.
   app::takeDue(at(local(18, 0, 2), 100), plan, rtc);
   CHECK_EQ(app::secondsToNextWake(at(local(18, 0, 2), 100), plan, rtc), 86400 - 2);
+
+  // The streak reminder wakes it like an office's does.
+  {
+    sys::RtcState fresh = {};
+    fresh.firedDay = -1;
+    app::Plan nudge;
+    nudge.syncHours = 0;
+    nudge.streakReminder = 22 * 60;
+    CHECK_EQ(app::secondsToNextWake(at(local(20, 0), 100), nudge, fresh), 2 * 3600);
+    CHECK_EQ(app::secondsToNextWake(at(local(22, 0, 1), 100), nudge, fresh), 5);
+    app::takeDue(at(local(22, 0, 1), 100), nudge, fresh);
+    CHECK_EQ(app::secondsToNextWake(at(local(22, 0, 1), 100), nudge, fresh), 86400 - 1);
+  }
 
   // Linked and syncing every four hours, last answer an hour ago: three hours,
   // sooner than midnight (13 h away) and the reminder (tomorrow).
@@ -297,6 +350,7 @@ void testModel(const char* path) {
   CHECK_EQ(today.reminders[0], 7 * 60);
   CHECK_EQ(today.reminders[1], -1);
   CHECK_EQ(today.reminders[2], 18 * 60);
+  CHECK_EQ(today.streakRemindAt, 22 * 60);
   // The week: oldest first, today last; it slides when the day turns.
   CHECK(today.hasWeek);
   CHECK_EQ(today.week[0], 4);
@@ -321,6 +375,7 @@ void testModel(const char* path) {
   CHECK(!old.hasUtcOffset);
   CHECK(old.upcoming.empty());
   CHECK(!old.season.known && !old.hasReminders && !old.hasWeek && old.day.observance.isEmpty());
+  CHECK_EQ(old.streakRemindAt, -1);
   CHECK(!model::parseToday("", old));
   CHECK(!model::parseToday("{not json", old));
 }

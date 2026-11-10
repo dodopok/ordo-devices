@@ -34,7 +34,7 @@ class Controller {
 
  private:
   enum class Flow { Day, WifiSetup, Linking };
-  enum class Notice { None, Reminder, Bell, SilenceDone };
+  enum class Notice { None, Reminder, Streak, Bell, SilenceDone };
 
   // boot
   void loadDay();
@@ -73,6 +73,7 @@ class Controller {
   };
   struct ContentResult {
     int status = 0;
+    int tlsError = 0;  // set when the site could not be reached
     std::vector<uint8_t> body;
   };
   std::vector<ContentJob> wantedContent(int limit);
@@ -87,7 +88,8 @@ class Controller {
 
   // firmware updates
   bool updateCheckDue() const;
-  void rememberOffer(net::OtaCheck result, const model::FirmwareOffer& offer);
+  void rememberOffer(net::OtaCheck result, const model::FirmwareOffer& offer, const String& detail = String());
+  bool nothingPrayedToday() const;
   bool connectForSite();
   void checkUpdateNow();
   void installUpdateNow();
@@ -166,6 +168,8 @@ class Controller {
 
   ui::UpdateState update_ = ui::UpdateState::Unknown;
   model::FirmwareOffer offer_;
+  String updateDetail_;  // why the last search failed
+  String siteProblem_;   // why the last picture or text did not come
   // A firmware being written, on a task with a stack deep enough for TLS and
   // flash at once. The main loop only draws how far it is and keeps the
   // compass from sleeping or being navigated meanwhile.

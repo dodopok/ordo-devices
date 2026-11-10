@@ -97,6 +97,9 @@ lv_obj_t* scrollColumn(lv_obj_t* scr);
 int16_t reminderFor(int office);
 // Whether a page of the carousel has anything to show today.
 bool pageAvailable(Page page);
+// The page after or before `page` as the carousel turns today (see carousel()
+// in ui_core.cpp: the owner's home screen first, the rest in their order).
+Page neighbour(Page page, bool forward);
 void pageDots(lv_obj_t* scr, Page page);
 // A small "‹ voltar" at the top of tools and settings.
 void backChip(lv_obj_t* scr);

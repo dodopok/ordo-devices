@@ -114,6 +114,11 @@ int Site::stream(const String& path, const std::function<bool(const uint8_t*, si
   return code;
 }
 
+int Site::lastTlsError() {
+  char text[8];
+  return client_.lastError(text, sizeof(text));
+}
+
 void Site::close() {
   http_.end();
   client_.stop();

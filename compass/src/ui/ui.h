@@ -59,6 +59,9 @@ struct Status {
   UpdateState update = UpdateState::Unknown;
   String updateVersion;  // the firmware on offer, when `update` is Available
   String updateNotes;    // what it brings, one or two sentences
+  // Why the search failed, in a few technical words ("sem Wi-Fi", "HTTP 404",
+  // "conexão -1, TLS -0x2700"): what to read out when asking for help.
+  String updateDetail;
 };
 
 // A celebration's picture as the screens take it: square, RGB565, already
@@ -83,6 +86,16 @@ struct Diagnostics {
   uint32_t wakesToday = 0;
   uint32_t syncsToday = 0;
   int32_t clockDriftPpm = 0;
+  // Internal memory (the kind Wi-Fi and TLS need), free now and at its
+  // lowest since the wake, in KB; 0: not known.
+  uint32_t freeMemoryKb = 0;
+  uint32_t lowestMemoryKb = 0;
+  // The local time of the next wake the compass scheduled for itself
+  // ("22:00"); empty: only a button will wake it.
+  String nextWake;
+  // The last failure fetching a picture or a text from the site, named
+  // ("HTTP 403", "conexão -1, TLS -0x2700"); empty: none since the wake.
+  String siteProblem;
   std::vector<String> networks;
 };
 
@@ -134,6 +147,8 @@ void setLinkCountdown(uint32_t secondsLeft);
 // the end of a time of silence, and the last screen before a flat battery
 // switches the board off.
 void showReminder(int office);
+// The app's evening nudge: nothing prayed yet today.
+void showStreakReminder();
 void showHourBell(int hour);
 void showSilenceDone();
 void showLowBattery();

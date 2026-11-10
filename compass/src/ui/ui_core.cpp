@@ -333,15 +333,41 @@ bool pageAvailable(Page page) {
   return page != Page::Celebration || S.day.day.celebration.present();
 }
 
+// The carousel as it turns today. The screen the owner chose to wake on
+// comes first; the others follow in their usual order, so choosing another
+// home only moves "Agora" one place along, it does not hide it. Pages with
+// nothing to show today are left out. Returns how many there are.
+int carousel(Page out[kPageCount]) {
+  static const Page usual[kPageCount] = {Page::Now, Page::Celebration, Page::Compass, Page::Readings,
+                                         Page::Offices, Page::Week, Page::Menu};
+  const Page home = homePage();
+  int count = 0;
+  out[count++] = home;
+  for (Page page : usual) {
+    if (page == home || !pageAvailable(page)) continue;
+    out[count++] = page;
+  }
+  return count;
+}
+
+Page neighbour(Page page, bool forward) {
+  Page order[kPageCount];
+  const int count = carousel(order);
+  int at = 0;
+  for (int i = 0; i < count; i++) {
+    if (order[i] == page) at = i;
+  }
+  return order[(at + (forward ? 1 : count - 1)) % count];
+}
+
 void pageDots(lv_obj_t* scr, Page page) {
   // Where you are in the carousel: a point per page there is today, on the
   // rim at three o'clock, outside every ring the faces draw.
-  int count = 0;
+  Page order[kPageCount];
+  const int count = carousel(order);
   int here = 0;
-  for (int i = 0; i < kPageCount; i++) {
-    if (!pageAvailable(static_cast<Page>(i))) continue;
-    if (i == indexOf(page)) here = count;
-    count++;
+  for (int i = 0; i < count; i++) {
+    if (order[i] == page) here = i;
   }
   for (int i = 0; i < count; i++) {
     lv_obj_t* d = dot(scr, i == here ? 9 : 5, i == here ? theme::fg() : theme::faint(), theme::bg(), 0);
@@ -725,14 +751,9 @@ bool showingNotice() { return S.mode == Mode::Notice; }
 bool onSwipe(Swipe dir) {
   const bool forward = dir == Swipe::Up || dir == Swipe::Left;
   switch (S.mode) {
-    case Mode::Pages: {
-      int next = static_cast<int>(S.page);
-      do {
-        next = (next + (forward ? 1 : kPageCount - 1)) % kPageCount;
-      } while (!pageAvailable(static_cast<Page>(next)));
-      showPage(static_cast<Page>(next));
+    case Mode::Pages:
+      showPage(neighbour(S.page, forward));
       return true;
-    }
     case Mode::Reading:
       // The text scrolls up and down; a swipe to the right closes it.
       if (dir != Swipe::Right) return false;

@@ -258,6 +258,13 @@ bool parseToday(const char* json, Today& out) {
 
   today.streakCurrent = doc["streak"]["current"] | 0;
   today.streakLongest = doc["streak"]["longest"] | 0;
+  {
+    int hour = -1, minute = -1;
+    const char* at = doc["streak"]["remind_at"] | "";
+    if (sscanf(at, "%2d:%2d", &hour, &minute) == 2 && hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
+      today.streakRemindAt = static_cast<int16_t>(hour * 60 + minute);
+    }
+  }
   today.refreshIntervalSeconds = doc["refresh"]["interval_seconds"] | 300;
   today.dayEndsInSeconds = doc["refresh"]["day_ends_in_seconds"] | 0;
   today.hasUtcOffset = !doc["utc_offset_seconds"].isNull();

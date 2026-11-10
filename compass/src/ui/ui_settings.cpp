@@ -24,6 +24,7 @@ enum class Row : uintptr_t {
   Reminder1,
   Reminder2,
   Reminder3,
+  StreakReminder,
   Wifi,
   SyncEvery,
   SyncNow,
@@ -139,6 +140,13 @@ bool valueOf(Row id, String& value, lv_color_t& color) {
       value = at >= 0 ? clockText(at) : String(tr("Desligado", "Off", "Apagado"));
       // The app's times are shown, not edited, here.
       if (at < 0 || followingApp()) color = theme::faint();
+      return true;
+    }
+    case Row::StreakReminder: {
+      // The app's own nudge: shown, never set here.
+      const int16_t at = S.prefs.remindersFromApp ? S.day.streakRemindAt : static_cast<int16_t>(-1);
+      value = at >= 0 ? clockText(at) : String(tr("Desligado", "Off", "Apagado"));
+      color = theme::faint();
       return true;
     }
     case Row::Update:
@@ -267,7 +275,11 @@ void onRow(lv_event_t* e) {
       break;
     case Row::Brightness: p.brightness = (p.brightness + 1) % 3; break;
     case Row::NightDim: p.nightDim = !p.nightDim; break;
-    case Row::HomeFace: p.homeFace = (p.homeFace + 1) % 5; break;
+    case Row::HomeFace:
+      p.homeFace = (p.homeFace + 1) % 5;
+      // The carousel turns from the new home: every page's dots move.
+      for (bool& dirty : S.dirty) dirty = true;
+      break;
     case Row::Animations: p.animations = !p.animations; break;
     case Row::TouchWakes: p.touchWakes = !p.touchWakes; break;
     case Row::DeskOn: p.deskAlwaysOn = !p.deskAlwaysOn; break;
@@ -287,6 +299,7 @@ void onRow(lv_event_t* e) {
       rememberScroll();
       openTimeEditor(static_cast<int>(id) - static_cast<int>(Row::Reminder0));
       return;
+    case Row::StreakReminder: return;
     case Row::Update: rememberScroll(); openUpdate(); return;
     case Row::Wifi: rememberScroll(); openWifi(); return;
     case Row::SyncEvery:
@@ -336,6 +349,7 @@ void buildList() {
   caption(list, tr("LEMBRETES", "REMINDERS", "RECORDATORIOS"));
   row(list, Row::ReminderSource, tr("Horários", "Times", "Horarios"));
   for (int i = 0; i < 4; i++) row(list, static_cast<Row>(static_cast<int>(Row::Reminder0) + i), officeName(i));
+  row(list, Row::StreakReminder, tr("Sequência", "Streak", "Racha"));
 
   caption(list, tr("REDE", "NETWORK", "RED"));
   row(list, Row::Wifi, "Wi-Fi", "›", theme::faint());
@@ -537,6 +551,14 @@ void buildAbout(lv_obj_t* scr) {
   aboutLine(col, tr("HOJE", "TODAY", "HOY"), buf);
   snprintf(buf, sizeof(buf), "%+ld ppm", static_cast<long>(info.clockDriftPpm));
   aboutLine(col, tr("DESVIO DO RELÓGIO", "CLOCK DRIFT", "DESVÍO DEL RELOJ"), buf);
+  aboutLine(col, tr("ACORDA SOZINHA", "WAKES BY ITSELF", "DESPIERTA SOLA"),
+            info.nextWake.isEmpty() ? tr("só com um botão", "only by a button", "solo con un botón") : info.nextWake.c_str());
+  if (!info.siteProblem.isEmpty()) aboutLine(col, tr("FOTOS E TEXTOS", "PICTURES AND TEXTS", "FOTOS Y TEXTOS"), info.siteProblem.c_str());
+  if (info.freeMemoryKb > 0) {
+    snprintf(buf, sizeof(buf), tr("%lu KB livres, mínimo %lu", "%lu KB free, lowest %lu", "%lu KB libres, mínimo %lu"),
+             static_cast<unsigned long>(info.freeMemoryKb), static_cast<unsigned long>(info.lowestMemoryKb));
+    aboutLine(col, tr("MEMÓRIA INTERNA", "INTERNAL MEMORY", "MEMORIA INTERNA"), buf);
+  }
   aboutLine(col, tr("PLACA", "BOARD", "PLACA"), info.board.c_str());
 }
 
@@ -672,6 +694,12 @@ void buildUpdate(lv_obj_t* scr) {
                         "busca sola una vez al día, enchufada"); break;
   }
   text(scr, state, theme::small(), color, 196, 0, 270);
+  // Why, for whoever is going to ask for help with it.
+  if (st.update == UpdateState::Failed && !st.updateDetail.isEmpty()) {
+    lv_obj_t* why = text(scr, st.updateDetail.c_str(), theme::tiny(), theme::faint(), 222, 0, 280);
+    lv_label_set_long_mode(why, LV_LABEL_LONG_MODE_DOTS);
+    lv_obj_set_height(why, 40);
+  }
   if (st.update != UpdateState::Checking) {
     lv_obj_t* look = pill(
         scr, tr("Procurar agora", "Look now", "Buscar ahora"), false,

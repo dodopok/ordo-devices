@@ -107,7 +107,8 @@ bool Controller::background() {
   Due what = takeDue();
   const bool dayTurned = today_.valid && sys::clockValid() && sys::utcOffsetKnown() && sys::localDays() != today_.day.days;
   const bool wantSync = linked() && net::wifiConfigured() &&
-                        (what.reminder >= 0 || dayTurned || (prefs_.syncHours > 0 && stale(prefs_.syncHours * 3600UL - 300)));
+                        (what.reminder >= 0 || what.streak || dayTurned ||
+                         (prefs_.syncHours > 0 && stale(prefs_.syncHours * 3600UL - 300)));
   if (wantSync) syncBlocking();
 
   if (what.silence) {
@@ -121,6 +122,12 @@ bool Controller::background() {
     if (view.officesKnown && view.offices[what.reminder].done) return false;
     pending_ = Notice::Reminder;
     pendingValue_ = what.reminder;
+    return true;
+  }
+  // The app's evening nudge, for a day with nothing prayed. An office's own
+  // reminder at the same minute (above) says it better.
+  if (what.streak && nothingPrayedToday()) {
+    pending_ = Notice::Streak;
     return true;
   }
   if (what.bellHour >= 0) {
@@ -171,6 +178,7 @@ void Controller::showInitial() {
   if (pending_ != Notice::None) {
     Due what;
     if (pending_ == Notice::Reminder) what.reminder = pendingValue_;
+    if (pending_ == Notice::Streak) what.streak = true;
     if (pending_ == Notice::Bell) what.bellHour = pendingValue_;
     if (pending_ == Notice::SilenceDone) what.silence = true;
     pending_ = Notice::None;
@@ -533,8 +541,10 @@ void Controller::contentTask(void* self) {
       ContentResult& result = c->content_.results[i];
       if (job.manifest) {
         result.status = site.get("/firmware/manifest.json", result.body, cfg::kManifestMaxBytes);
+        if (result.status < 0) result.tlsError = site.lastTlsError();
       } else {
         result.status = site.get(job.path, result.body, job.kind == store::ContentKind::Art ? cfg::kArtMaxBytes : cfg::kTextMaxBytes);
+        if (result.status < 0) result.tlsError = site.lastTlsError();
       }
       c->content_.produced = static_cast<int>(i) + 1;
       // The site did not answer at all: the rest would go the same way.
@@ -558,13 +568,18 @@ void Controller::keepContent(const ContentJob& job, ContentResult& result) {
   if (job.manifest) {
     model::FirmwareOffer offer;
     net::OtaCheck check = net::OtaCheck::Failed;
-    if (result.status == 200 && model::parseManifest(reinterpret_cast<const char*>(result.body.data()), result.body.size(), ORDO_BOARD_KEY,
-                                                     today_.language, offer)) {
+    String detail;
+    if (result.status != 200 || result.body.empty()) {
+      detail = net::siteFailure(result.status, result.tlsError);
+    } else if (!model::parseManifest(reinterpret_cast<const char*>(result.body.data()), result.body.size(), ORDO_BOARD_KEY, today_.language,
+                                     offer)) {
+      detail = "manifesto sem " ORDO_BOARD_KEY;
+    } else {
       const bool newer = model::versionNewer(offer.version.c_str(), ORDO_FIRMWARE_VERSION) &&
                          !(net::otaRequiresSignature() && offer.signature.isEmpty());
       check = newer ? net::OtaCheck::Available : net::OtaCheck::UpToDate;
     }
-    rememberOffer(check, offer);
+    rememberOffer(check, offer, detail);
     return;
   }
   const bool art = job.kind == store::ContentKind::Art;
@@ -575,10 +590,14 @@ void Controller::keepContent(const ContentJob& job, ContentResult& result) {
       if (art && artSlug_ == job.slug) artSlug_ = String();
       if (screenUp_) ui::contentArrived(job.slug);
     }
+    siteProblem_ = String();
   } else if (result.status == 404) {
     // No picture in the CMS, or one too small to show: the page is set in
     // type, and the site is not asked again until the next wake.
     missing_.push_back(job.slug + (art ? ".jpg" : ".json"));
+  } else {
+    // Anything else is worth knowing about: it shows on the "Sobre" screen.
+    siteProblem_ = net::siteFailure(result.status, result.tlsError);
   }
 }
 
@@ -590,8 +609,9 @@ void Controller::fetchContentBlocking() {
     for (const ContentJob& job : jobs) {
       ContentResult result;
       result.status = site.get(job.path, result.body, job.kind == store::ContentKind::Art ? cfg::kArtMaxBytes : cfg::kTextMaxBytes);
-      if (result.status < 0 && result.status != net::kSiteBodyRefused) break;
+      if (result.status < 0) result.tlsError = site.lastTlsError();
       keepContent(job, result);
+      if (result.status < 0 && result.status != net::kSiteBodyRefused) break;
     }
     site.close();
   }
@@ -654,8 +674,16 @@ bool Controller::updateCheckDue() const {
   return r.updateCheckedRaw == 0 || sys::rawSeconds() - r.updateCheckedRaw >= cfg::kUpdateCheckEverySeconds;
 }
 
-void Controller::rememberOffer(net::OtaCheck result, const model::FirmwareOffer& offer) {
+// True unless the compass knows an office was prayed today. A day it rolled
+// to without a network counts as nothing prayed: better a nudge too many.
+bool Controller::nothingPrayedToday() const {
+  const model::Today view = currentView();
+  return !view.officesKnown || view.completedToday == 0;
+}
+
+void Controller::rememberOffer(net::OtaCheck result, const model::FirmwareOffer& offer, const String& detail) {
   sys::RtcState& r = sys::rtc();
+  if (result != net::OtaCheck::Failed) updateDetail_ = String();
   switch (result) {
     case net::OtaCheck::Available:
       update_ = ui::UpdateState::Available;
@@ -671,6 +699,7 @@ void Controller::rememberOffer(net::OtaCheck result, const model::FirmwareOffer&
       break;
     case net::OtaCheck::Failed:
       // What was known before stands; only someone who asked is told.
+      updateDetail_ = detail;
       if (update_ == ui::UpdateState::Checking) update_ = ui::UpdateState::Failed;
       break;
   }
@@ -703,12 +732,13 @@ void Controller::checkUpdateNow() {
   lv_display_trigger_activity(nullptr);
   model::FirmwareOffer offer;
   net::OtaCheck result = net::OtaCheck::Failed;
+  String detail = "sem Wi-Fi";
   if (connectForSite()) {
     net::Site site;
-    result = net::otaCheck(site, today_.language, offer);
+    result = net::otaCheck(site, today_.language, offer, &detail);
     site.close();
   }
-  rememberOffer(result, offer);
+  rememberOffer(result, offer, detail);
   if (!syncing_ && !deskMode() && flow_ == Flow::Day) {
     net::wifiOff();
     setCpuFrequencyMhz(cfg::kCpuScreenMhz);
@@ -924,6 +954,9 @@ Plan Controller::plan() const {
   // The times set in the app, when the owner follows the app and it has any.
   const bool fromApp = prefs_.remindersFromApp && today_.valid && today_.hasReminders;
   for (int i = 0; i < 4; i++) p.reminder[i] = fromApp ? today_.reminders[i] : prefs_.reminder[i];
+  // The streak reminder exists only in the app: followed whenever the owner
+  // follows the app, whether or not any office has a time there.
+  if (prefs_.remindersFromApp && today_.valid) p.streakReminder = today_.streakRemindAt;
   p.hourBell = prefs_.hourBell;
   p.syncHours = prefs_.syncHours;
   p.canSync = linked() && net::wifiConfigured();
@@ -948,13 +981,12 @@ void Controller::everySecond() {
   }
 
   Due what = takeDue();
-  if (what.silence || what.reminder >= 0 || what.bellHour >= 0) {
-    if (what.reminder >= 0) {
-      const model::Today view = currentView();
-      if (view.officesKnown && view.offices[what.reminder].done) what.reminder = -1;
-    }
-    fire(what);
+  if (what.reminder >= 0) {
+    const model::Today view = currentView();
+    if (view.officesKnown && view.offices[what.reminder].done) what.reminder = -1;
   }
+  if (what.streak && !nothingPrayedToday()) what.streak = false;
+  if (what.silence || what.reminder >= 0 || what.streak || what.bellHour >= 0) fire(what);
 
   if (millis() - lastBatteryMs_ >= 20000 || lastBatteryMs_ == 0) {
     lastBatteryMs_ = millis();
@@ -989,6 +1021,9 @@ void Controller::fire(const Due& what) {
     strikes = 3;
   } else if (what.reminder >= 0) {
     ui::showReminder(what.reminder);
+    strikes = 2;
+  } else if (what.streak) {
+    ui::showStreakReminder();
     strikes = 2;
   } else if (what.bellHour >= 0) {
     ui::showHourBell(what.bellHour);
@@ -1128,6 +1163,7 @@ void Controller::pushStatus() {
   status.update = update_;
   status.updateVersion = offer_.version;
   status.updateNotes = offer_.notes;
+  status.updateDetail = updateDetail_;
   ui::setStatus(status);
 }
 
@@ -1234,6 +1270,18 @@ ui::Actions Controller::actions() {
     d.wakesToday = sys::rtc().wakesToday;
     d.syncsToday = sys::rtc().syncsToday;
     d.clockDriftPpm = sys::clockDriftPpm();
+    d.siteProblem = siteProblem_;
+    d.freeMemoryKb = static_cast<uint32_t>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024);
+    d.lowestMemoryKb = static_cast<uint32_t>(heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL) / 1024);
+    // When it would wake by itself if put to sleep now.
+    const int64_t ahead = app::secondsToNextWake(moment(), plan(), sys::rtc());
+    if (ahead > 0 && sys::clockValid() && sys::utcOffsetKnown()) {
+      const int64_t minutes = sys::minuteOfDay() + (ahead + 30) / 60;
+      char at[24];
+      if (minutes >= 2 * 1440) snprintf(at, sizeof(at), "em %lld dias", static_cast<long long>(minutes / 1440));
+      else snprintf(at, sizeof(at), "%02d:%02d%s", static_cast<int>((minutes / 60) % 24), static_cast<int>(minutes % 60), minutes >= 1440 ? " de amanhã" : "");
+      d.nextWake = String(at);
+    }
     for (const auto& network : settings_.networks()) d.networks.push_back(network.ssid);
     return d;
   };

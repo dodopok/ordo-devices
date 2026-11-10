@@ -174,6 +174,8 @@ void tapRow(const char* label) {
           lv_screen_active() == ui::detail::S.settings ? "list" : (lv_screen_active() == ui::detail::S.sub ? "sub" : "other"));
 }
 
+int carouselFailures = 0;
+
 // Pokes everything a finger or a button can reach. Nothing here checks a
 // picture; it is there to crash (under the address sanitizer, loudly) if a
 // screen frees something it still uses.
@@ -188,6 +190,31 @@ void exercise(const model::Today& today) {
     for (int i = 0; i < 7; i++) { onBootPress(); settle(2); }
   }
   onBootLongPress();
+
+  // Another home screen moves to the front of the carousel; "Agora" follows
+  // it, and nothing drops out.
+  {
+    const uint8_t was = S.prefs.homeFace;
+    S.prefs.homeFace = 3;  // Ofícios
+    const bool feast = today.day.celebration.present();
+    const Page expected[] = {Page::Offices, Page::Now, Page::Celebration, Page::Compass, Page::Readings, Page::Week, Page::Menu};
+    Page at = Page::Offices;
+    for (int i = 0; i < 7; i++) {
+      if (expected[i] == Page::Celebration && !feast) continue;
+      if (at != expected[i]) carouselFailures++;
+      at = detail::neighbour(at, true);
+    }
+    if (at != Page::Offices) carouselFailures++;                         // all the way round
+    if (detail::neighbour(Page::Offices, false) != Page::Menu) carouselFailures++;
+    goHome();
+    settle(2);
+    onSwipe(Swipe::Up);
+    settle(2);
+    if (S.page != Page::Now) carouselFailures++;
+    S.prefs.homeFace = was;
+    goHome();
+    settle(2);
+  }
 
   // The four tiles of the menu by touch, each tool, and the way back.
   for (int item = 0; item < 4; item++) {
@@ -297,6 +324,7 @@ void exercise(const model::Today& today) {
   showReminder(1); settle(2); tap(233, 233); settle(2);
   showHourBell(18); settle(2); onSwipe(Swipe::Down); settle(2);
   showSilenceDone(); settle(2); onBootPress(); settle(2);
+  showStreakReminder(); settle(2); tap(233, 233); settle(2);
   showReminder(3); settle(2); setToday(today); settle(2); dismissNotice();
 
   // A status that changes under every screen.
@@ -437,7 +465,7 @@ int main(int argc, char** argv) {
   actions.prefsChanged = [](const ui::Prefs&) {};
   actions.diagnostics = []() {
     ui::Diagnostics d;
-    d.firmware = "0.3.0";
+    d.firmware = "0.4.1";
     d.board = "ESP32-S3-Touch-AMOLED-1.75C";
     d.deviceName = "Chaveiro";
     d.batteryPercent = 82;
@@ -445,6 +473,9 @@ int main(int argc, char** argv) {
     d.wakesToday = 23;
     d.syncsToday = 5;
     d.clockDriftPpm = 412;
+    d.freeMemoryKb = 148;
+    d.lowestMemoryKb = 86;
+    d.nextWake = "18:00";
     d.networks = {"Casa", "Paróquia São Paulo", "iPhone de Douglas"};
     return d;
   };
@@ -504,6 +535,10 @@ int main(int argc, char** argv) {
       exercise(model::viewFor(today, today.day.days + 5));      // one whose picture never came
       exercise(model::viewFor(today, today.day.days + 3));
       exercise(model::viewFor(today, today.day.days + 40));
+      if (carouselFailures) {
+        printf("the carousel is out of order (%d)\n", carouselFailures);
+        return 1;
+      }
       if (ui::changingScreen() || ui::brightnessScale() != 255) {
         printf("exercise left the glass dark (scale %d)\n", ui::brightnessScale());
         return 1;
@@ -594,6 +629,8 @@ int main(int argc, char** argv) {
   snap("sino");
   ui::showSilenceDone();
   snap("silencio-fim");
+  ui::showStreakReminder();
+  snap("sequencia");
   ui::showLowBattery();
   snap("bateria");
 
@@ -634,6 +671,21 @@ int main(int argc, char** argv) {
   ui::setStatus(st);
   ui::detail::openUpdate();
   snap("atualizacao-em-dia");
+  st.update = ui::UpdateState::Failed;
+  st.updateDetail = "conexão -1, TLS -0x2700";
+  ui::setStatus(st);
+  ui::detail::openUpdate();
+  snap("atualizacao-falhou");
+  st.update = ui::UpdateState::Unknown;
+  st.updateDetail = "";
+  ui::setStatus(st);
+  // Another home screen: it comes first, "Agora" second.
+  ui::detail::S.prefs.homeFace = 1;
+  ui::goHome();
+  snap("inicio-bussola");
+  ui::onSwipe(ui::Swipe::Up);
+  snap("inicio-bussola-agora");
+  ui::detail::S.prefs.homeFace = 0;
   ui::detail::showPage(ui::Page::Now);
 
   // ---- other days

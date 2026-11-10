@@ -75,6 +75,10 @@ Arrastar em qualquer direção percorre um carrossel circular: para cima ou
 para a esquerda avança, para baixo ou para a direita volta, e depois da
 última vem a primeira. O botão **BOOT** também avança.
 
+A tela escolhida em Ajustes › Tela inicial é a primeira do carrossel e as
+outras seguem na ordem de sempre: escolher a Bússola, por exemplo, só leva a
+"Agora" para o segundo lugar.
+
 | Tela | O que mostra |
 | --- | --- |
 | Agora | hora, data, tempo litúrgico, nome do dia e o ofício que a hora pede |
@@ -123,9 +127,9 @@ Em Mais › Ajustes, direto na bússola:
 | --- | --- |
 | Tela | apaga em 10, 15, 30 ou 60 segundos; brilho baixo, médio ou alto; escurecer à noite; tela inicial (Agora, Bússola, Leituras, Ofícios ou Semana); animações; toque acorda; acesa na tomada |
 | Som | ligado ou não; volume; sino às 6h, 12h e 18h |
-| Lembretes | horários "do app" (os que você marcou no Ordo, quando há algum) ou "daqui" (um horário para cada ofício, ajustado na bússola); toca só se o ofício ainda não foi orado |
+| Lembretes | horários "do app" (os que você marcou no Ordo, quando há algum) ou "daqui" (um horário para cada ofício, ajustado na bússola); toca só se o ofício ainda não foi orado. Seguindo o app, vem junto o aviso de **sequência**: às 22h, se nenhum ofício foi orado no dia |
 | Rede | redes Wi-Fi guardadas (até cinco) e adicionar outra; sincronizar a cada 2, 4, 6 ou 12 horas, ou só ao acordar; sincronizar agora |
-| Aparelho | atualização (procurar e instalar um firmware novo); sobre (versão, bateria, última sincronização, quantas vezes acordou); desligar; desvincular; apagar tudo |
+| Aparelho | atualização (procurar e instalar um firmware novo); sobre (versão, bateria, última sincronização, quantas vezes acordou, a que horas acorda sozinha, memória interna livre, último erro ao buscar fotos); desligar; desvincular; apagar tudo |
 
 ### A comemoração do dia
 
@@ -202,6 +206,8 @@ foi gravada num aparelho.
 | Wi-Fi apagado, ponto cinza | Nenhuma rede guardada, ou a última tentativa não achou nenhuma | Ajustes › Wi-Fi |
 | Data em vez de hora | Ainda não sincronizou desde que foi ligada | Sincronize: Ajustes › Sincronizar agora |
 | Comemoração sem foto | O CMS não tem imagem para ela, a imagem é pequena demais, a foto ainda não foi baixada, ou a API está sem `DEVICE_CONTENT_SECRET` | Espere a próxima sincronização; se continuar, veja `site/README.md` |
+| "não deu para procurar agora" na Atualização | Sem Wi-Fi, ou o site não respondeu. A linha pequena embaixo diz o motivo: `sem Wi-Fi`, `HTTP 404`, `conexão -1, TLS -0x2700` (certificado não confiado), `TLS -0x7F00` (faltou memória) | Tente perto do Wi-Fi. Persistindo, o código dessa linha diz onde olhar |
+| Aviso no celular e nada na bússola | O horário não chegou à bússola, ou "Horários" está em "Daqui" | Ajustes › Lembretes mostra os horários que ela conhece (ofícios e sequência); Sobre › "acorda sozinha" mostra o próximo despertar |
 | "Não atualizou: o arquivo não conferiu" | O firmware baixado não bate com o manifesto, ou não está assinado e este firmware exige assinatura | Nada foi mudado na bússola. Publique a versão de novo com `tools/release.py build` |
 | Não acorda | Bateria no fim, ou desligada pelo PWR | Ligue no cabo; aperte PWR |
 

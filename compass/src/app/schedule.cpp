@@ -4,6 +4,7 @@ namespace app {
 namespace {
 
 constexpr int kReminderGraceMinutes = 20;  // later than this, a reminder is let pass
+constexpr int kStreakSlot = 4;             // in RtcState::firedAt, after the four offices
 constexpr int kBellGraceMinutes = 10;
 constexpr int64_t kAfterMidnightSeconds = 120;
 const int kBellHours[3] = {6, 12, 18};
@@ -53,15 +54,23 @@ Due takeDue(const Moment& now, const Plan& plan, sys::RtcState& rtc) {
   const int32_t day = localDay(now);
   if (rtc.firedDay != day) {
     rtc.firedDay = day;
-    rtc.remindersFired = 0;
+    for (int16_t& at : rtc.firedAt) at = -1;
     rtc.bellsFired = 0;
   }
   const int minute = minuteOfDay(now);
   for (int i = 0; i < 4; i++) {
     const int at = plan.reminder[i];
-    if (at < 0 || (rtc.remindersFired & (1 << i)) || minute < at) continue;
-    rtc.remindersFired |= static_cast<uint8_t>(1 << i);
-    if (minute - at <= kReminderGraceMinutes && what.reminder < 0) what.reminder = i;
+    if (at < 0 || minute < at || rtc.firedAt[i] == at) continue;
+    const bool onTime = minute - at <= kReminderGraceMinutes;
+    // One at a time: a second office due in the same minute rings at the
+    // next look, not never.
+    if (onTime && what.reminder >= 0) continue;
+    rtc.firedAt[i] = static_cast<int16_t>(at);
+    if (onTime) what.reminder = i;
+  }
+  if (plan.streakReminder >= 0 && minute >= plan.streakReminder && rtc.firedAt[kStreakSlot] != plan.streakReminder) {
+    rtc.firedAt[kStreakSlot] = plan.streakReminder;
+    what.streak = minute - plan.streakReminder <= kReminderGraceMinutes;
   }
   if (plan.hourBell) {
     for (int i = 0; i < 3; i++) {
@@ -88,10 +97,10 @@ int64_t secondsToNextWake(const Moment& now, const Plan& plan, const sys::RtcSta
   if (now.clockValid) {
     const int minute = minuteOfDay(now);
     const bool sameDay = rtc.firedDay == localDay(now);
-    for (int i = 0; i < 4; i++) {
-      const int at = plan.reminder[i];
+    for (int i = 0; i <= kStreakSlot; i++) {
+      const int at = i == kStreakSlot ? plan.streakReminder : plan.reminder[i];
       if (at < 0) continue;
-      const bool rung = sameDay && (rtc.remindersFired & (1 << i));
+      const bool rung = sameDay && rtc.firedAt[i] == at;
       // Its minute has come and it has not rung: in a moment, not tomorrow.
       if (minute >= at && minute - at <= kReminderGraceMinutes && !rung) consider(5);
       else consider(untilLocalMinute(now, at));
