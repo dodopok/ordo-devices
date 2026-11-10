@@ -1,23 +1,23 @@
 {
   "v": 1,
-  "version": "0.4.0",
-  "released": "2026-11-09",
+  "version": "0.4.1",
+  "released": "2026-11-10",
   "notes": {
-    "pt": "Comemoração do dia com foto e texto, jejum na tela Agora, a semana nos Ofícios, lembretes vindos do app e atualização pelo Wi-Fi.",
-    "en": "The day's celebration with its picture and text, the fast on the Now face, the week on Offices, reminders from the app and updates over Wi-Fi.",
-    "es": "La conmemoración del día con foto y texto, el ayuno en la pantalla Ahora, la semana en Oficios, recordatorios de la app y actualización por Wi-Fi."
+    "pt": "Corrige a procura por atualização, traz o aviso de sequência das 22h do app e mantém a tela Agora no carrossel quando outra é a inicial.",
+    "en": "Fixes the search for updates, brings the app's 22h streak reminder and keeps the Now screen in the carousel when another one is home.",
+    "es": "Corrige la búsqueda de actualizaciones, trae el aviso de racha de las 22h de la app y mantiene la pantalla Ahora en el carrusel cuando otra es la inicial."
   },
   "boards": {
     "amoled175c": {
-      "path": "/firmware/0.4.0/amoled175c.bin",
-      "size": 1959248,
-      "sha256": "6959e015ac220ce38a0d7f036c8f81737cc96350cf32686d99703635c8b931fc",
+      "path": "/firmware/0.4.1/amoled175c.bin",
+      "size": 1968672,
+      "sha256": "2a6c77054b0fb623f2dbad11345c1ce44ccc782f9df3cabc499ef0184d0f5a90",
       "sig": ""
     },
     "amoled175": {
-      "path": "/firmware/0.4.0/amoled175.bin",
-      "size": 1931664,
-      "sha256": "2cdf288647f455a0b408a16a441742e85c6bbd3e0ef3f95a643051a035239956",
+      "path": "/firmware/0.4.1/amoled175.bin",
+      "size": 1941136,
+      "sha256": "3fab080047bbd59de4d038e06058f16143e9427ee2e82418c44e5d10a32f9624",
       "sig": ""
     }
   }
