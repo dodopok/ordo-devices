@@ -105,3 +105,9 @@ leem a API: a única rota que o token de aparelho abre é
    Site: `cd site && npm install && npm test`.
 4. Atualizar o README se mudou comportamento visível ou configuração.
 5. Commitar.
+
+**Pull requests**: o título segue a mesma regra dos commits (regra 7), e a
+descrição segue o modelo em `.github/pull_request_template.md` (por quê, o que
+muda, riscos, publicação, como desfazer, como testar, telas, checklist). O
+GitHub só preenche o modelo na tela web: quem abre PR pela API ou pela linha de
+comando copia as seções e preenche cada uma, com "Nada." onde não se aplica.
